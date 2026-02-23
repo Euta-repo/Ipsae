@@ -3,7 +3,6 @@
 #include <stdio.h>
 #include <io.h>
 #include <fcntl.h>
-#include <vector>
 
 #pragma comment(lib, "WinDivert.lib")
 
@@ -41,7 +40,7 @@ static const char* ProtocolName(UINT8 proto)
 
 int wmain()
 {
-    (void)_setmode(_fileno(stdout), _O_U16TEXT);
+    _setmode(_fileno(stdout), _O_U16TEXT);
 
     wprintf(L"=== IpsaeEngine 패킷 캡처 (WinDivert) ===\n");
     wprintf(L"Ctrl+C 로 종료\n\n");
@@ -69,26 +68,25 @@ int wmain()
         L"방향", L"프로토콜", L"출발지", L"목적지", L"크기");
     wprintf(L"───────────────────────────────────────────────────────────────────\n");
 
-    std::vector<unsigned char> packet(PACKET_BUFSIZE);
-
+    unsigned char packet[PACKET_BUFSIZE];
     WINDIVERT_ADDRESS addr;
     UINT recvLen = 0;
 
     while (g_running)
     {
-        if (!WinDivertRecv(handle, packet.data(), packet.size(), &recvLen, &addr))
+        if (!WinDivertRecv(handle, packet, sizeof(packet), &recvLen, &addr))
         {
             if (!g_running) break;
             continue;
         }
 
-        PWINDIVERT_IPHDR  ipHdr  = NULL;
-        PWINDIVERT_TCPHDR tcpHdr = NULL;
-        PWINDIVERT_UDPHDR udpHdr = NULL;
-        UINT8 protocol = 0;
+        PWINDIVERT_IPHDR  ipHdr  = NULL;  // IPv4 헤더
+        PWINDIVERT_TCPHDR tcpHdr = NULL;  // TCP 헤더
+        PWINDIVERT_UDPHDR udpHdr = NULL;  // UDP 헤더
+        UINT8 protocol = 0;               // 프로토콜 번호 (6=TCP, 17=UDP, 1=ICMP)
 
         WinDivertHelperParsePacket(
-            packet.data(), recvLen,
+            packet, recvLen,
             &ipHdr,     // [출력] IPv4 헤더 포인터
             NULL,       // IPv6 헤더 (불필요 - IPv4만 캡처)
             &protocol,  // [출력] 상위 프로토콜 번호
@@ -102,10 +100,8 @@ int wmain()
             NULL        // 다음 헤더 길이 (불필요)
         );
 
-        
         if (ipHdr == NULL) continue;
 
-        // 방향 판별: addr.Outbound == 1이면 송신, 0이면 수신
         const wchar_t* dir = addr.Outbound ? L"OUT" : L"IN ";
 
         // 출발지/목적지 IP 주소를 문자열로 변환
@@ -135,7 +131,7 @@ int wmain()
         if (srcPort != 0)
         {
             // TCP/UDP: IP:포트 형식
-            (L"[%s] %hs %hs:%-5u -> %hs:%-5u  len=%u\n",
+            wprintf(L"[%s] %hs %hs:%-5u -> %hs:%-5u  len=%u\n",
                 dir,
                 ProtocolName(protocol),
                 srcStr, srcPort,
@@ -152,10 +148,20 @@ int wmain()
                 dstStr,
                 totalLen);
         }
-    }
+    } 
 
-    // WinDivertClose: 핸들을 닫으면 드라이버가 자동으로 언로드됨
-    WinDivertClose(handle);
+    if (WinDivertShutdown(handle, WINDIVERT_SHUTDOWN_BOTH)) {
+        wprintf(L"[OK] WinDivert Shutdown 성공\n");
+    } else {
+        DWORD err = GetLastError();
+        wprintf(L"[FAIL] WinDivertShutdown: error %lu\n", err);
+    }
+    if (WinDivertClose(handle)) {
+        wprintf(L"[OK] WinDivert 핸들 닫기 성공\n");
+    } else {
+        DWORD err = GetLastError();
+        wprintf(L"[FAIL] WinDivertClose: error %lu\n", err);
+    }
     wprintf(L"\n[OK] 패킷 캡처 종료\n");
 
     return 0;
