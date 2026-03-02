@@ -83,11 +83,12 @@
                         <Grid Margin="0,0,0,12">
                             <TextBlock Text="인터페이스 선택" FontSize="12"
                                        Foreground="{StaticResource TextLabel}" VerticalAlignment="Center"/>
-                            <Border Background="{StaticResource ValueBg}" Padding="10,2"
-                                    HorizontalAlignment="Right">
-                                <TextBlock Text="{Binding InterfaceName}" FontSize="11" Foreground="#888888"
-                                           FontFamily="Consolas"/>
-                            </Border>
+                            <ComboBox Style="{StaticResource SettingsComboBox}"
+                                      ItemContainerStyle="{StaticResource SettingsComboBoxItem}"
+                                      ItemsSource="{Binding NetworkInterfaces}"
+                                      SelectedItem="{Binding SelectedInterface}"
+                                      DisplayMemberPath="DisplayName"
+                                      HorizontalAlignment="Right"/>
                         </Grid>
                         <Grid>
                             <TextBlock Text="최대 검사 지연시간" FontSize="12"
