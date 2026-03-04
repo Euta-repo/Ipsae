@@ -203,7 +203,7 @@ static int BatchInsertLog(sqlite3* db, DB_INSERT_BATCH& data)
 		int networkIdx = (int)sqlite3_last_insert_rowid(db);
 
 		// 프로세스 로그 정보
-		int proc_size = item.processes.size();
+		size_t proc_size = item.processes.size();
 		for (size_t i = 0; i < proc_size; i++)
 		{
 			// SQL 바인딩
