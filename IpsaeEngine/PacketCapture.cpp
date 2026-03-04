@@ -4,7 +4,7 @@
 
 #pragma comment(lib, "WinDivert.lib")
 
-#pragma region values
+#pragma region Variables
 
 #define PACKET_BUFSIZE  0xFFFF // 최대 패킷 크기 (65535 바이트)
 
@@ -12,7 +12,7 @@ static std::atomic<bool> s_running{ false };
 
 #pragma endregion
 
-#pragma region Forward Declaration
+#pragma region Forward declaration
 
 static void FormatIPv4(UINT32 addr, char* buf, size_t bufLen);
 static const char* ProtocolName(UINT8 proto);
@@ -20,7 +20,7 @@ static unsigned int StartPacketCapture(HANDLE hReadyEvent);
 
 #pragma endregion
 
-#pragma region functions
+#pragma region Functions
 
 unsigned int __stdcall StartPacketCaptureThread(void* param)
 {
@@ -33,6 +33,10 @@ void StopPacketCapture()
 {
     s_running = false;
 }
+
+#pragma endregion
+
+#pragma region Static functions
 
 static void FormatIPv4(UINT32 addr, char* buf, size_t bufLen)
 {

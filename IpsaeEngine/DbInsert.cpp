@@ -1,12 +1,13 @@
 ﻿#include "pch.h"
 #include "DbInsert.h"
 #include "sqlite3.h"
+#include "Models.h"
 
 #pragma comment(lib, "sqlite3.lib")
 
-#pragma region values
+#pragma region Variables
 
-static ThreadSafeQueue<std::string> s_dbInsertQueue;
+static ThreadSafeQueue<DB_INSERT_DATA> s_dbInsertQueue;
 
 static const char* DB_LIST[] = {
 	"tb_threat_host",
@@ -17,7 +18,7 @@ static const char* DB_LIST[] = {
 
 #pragma endregion
 
-#pragma region Forward Declaration
+#pragma region Forward declaration
 
 static int CheckDbTableList(sqlite3* db);
 static int GetThreatHostList(sqlite3* db, std::unordered_set<std::string>& hosts);
@@ -25,9 +26,9 @@ static unsigned int StartDbInsert(HANDLE hReadyEvent);
 
 #pragma endregion
 
-#pragma region functions
+#pragma region Functions
 
-void EnqueueDbInsert(const std::string& data)
+void EnqueueDbInsert(const DB_INSERT_DATA& data)
 {
 	s_dbInsertQueue.Push(data);
 }
@@ -38,6 +39,10 @@ unsigned int __stdcall StartDbInsertThread(void* param)
 
 	return StartDbInsert(context->hReadyEvent);
 }
+
+#pragma endregion
+
+#pragma region Static functions
 
 static int CheckDbTableList(sqlite3* db)
 {
@@ -85,11 +90,11 @@ static int CheckDbTableList(sqlite3* db)
 	return 0;
 }
 
-static int GetThreatHostList(sqlite3* db, std::unordered_set<std::string> &hosts)
+static int GetThreatHostList(sqlite3* db, std::unordered_set<UINT32> &hosts)
 {
 	// 초기화
 	sqlite3_stmt* stmt = NULL;
-	std::unordered_set<std::string> threat_hosts;
+	std::unordered_set<UINT32> threat_hosts;
 
 	// DB 유효성 검사
 	if (db == NULL)
@@ -99,7 +104,7 @@ static int GetThreatHostList(sqlite3* db, std::unordered_set<std::string> &hosts
 	}
 
 	// SQL 준비
-	const char* selectSql = "SELECT host FROM tb_threat_host;";
+	const char* selectSql = "SELECT host_ip FROM tb_threat_host WHERE host_type = 0 AND is_valid = 1;";
 	int rc = sqlite3_prepare_v2(db, selectSql, -1, &stmt, NULL);
 	if (rc != SQLITE_OK)
 	{
@@ -111,9 +116,8 @@ static int GetThreatHostList(sqlite3* db, std::unordered_set<std::string> &hosts
 	// SQL 실행 및 결과 처리
 	while (sqlite3_step(stmt) == SQLITE_ROW)
 	{
-		const char* host = (const char*)sqlite3_column_text(stmt, 0);
-		if (host != NULL)
-			threat_hosts.insert(host);
+		UINT32 ip = (UINT32)sqlite3_column_int(stmt, 0);
+		threat_hosts.insert(ip);
 	}
 
 	// SQL 문 종료
@@ -128,8 +132,8 @@ static unsigned int StartDbInsert(HANDLE hReadyEvent)
 {
 	sqlite3* db = NULL;
 	sqlite3_stmt* stmt = NULL;
-	std::unordered_set<std::string> threat_hosts;
-	std::string data;
+	std::unordered_set<UINT32> threat_hosts;
+	DB_INSERT_DATA data;
 
 	// DB Open
 	int rc = sqlite3_open("ipsaedb.db", &db);
