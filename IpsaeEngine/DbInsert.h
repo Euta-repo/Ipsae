@@ -1,6 +1,6 @@
 #pragma once
-#include "Models.h"
 #include "Common.h"
+#include "Models.h"
 
 unsigned int __stdcall StartDbInsertThread(void* param);
 

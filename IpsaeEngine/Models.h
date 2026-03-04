@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 #include "pch.h"
 
 // =============================================================================================
@@ -9,7 +9,7 @@ struct THREAT_HOST
 {
     int idx;
     int hostType;
-    UINT32 hostIp;          // unsigned
+    UINT32 hostIp;
     std::string hostDomain;
     std::string source;
     int isValid;
