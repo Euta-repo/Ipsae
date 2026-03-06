@@ -4,10 +4,13 @@
 
 enum ENGINE_STATUS
 {
-	ENGINE_INIT,
-	ENGINE_RUNNING,
-	ENGINE_STOPPING,
-	ENGINE_STOPPED
+	ENGINE_INIT,		// 초기화 단계 (다시 사용하지 않음)
+	ENGINE_STARTING,	// 시작 단계
+	ENGINE_RUNNING,		// 실행 중
+	ENGINE_STOPPING,	// 중지 단계
+	ENGINE_STOPPED,		// 중지 완료
+	ENGINE_ERROR,
+	ENGINE_WAITING		// 대기 단계
 };
 
 struct ENGINE_STATE
@@ -22,6 +25,12 @@ struct ENGINE_STATE
 	std::atomic<bool> ipcToolRunning{ false };
 };
 
+// =============================================================================================
+// Timeout
+// =============================================================================================
+
+#define TIMEOUT_WAITING     60000   // 대기 상태 타임아웃 (ms)
+#define TIMEOUT_STOPPING    10000   // 종료 대기열 처리 타임아웃 (ms)
 
 // =============================================================================================
 // Thread
@@ -64,6 +73,8 @@ struct ThreadSafeQueue
 	/// <param name="item">큐에 추가할 항목입니다.</param>
 	void Push(const T& item)
 	{
+		if (stopped)
+			return;
 		{
 			std::lock_guard<std::mutex> lock(mutex);
 			queue.push(item);

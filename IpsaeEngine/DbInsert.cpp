@@ -2,6 +2,7 @@
 #include "DbInsert.h"
 #include "sqlite3.h"
 #include "Models.h"
+#include "Common.cpp"
 
 #pragma comment(lib, "sqlite3.lib")
 
@@ -24,7 +25,7 @@ static const char* DB_LIST[] = {
 static int CheckDbTableList(sqlite3* db);
 static int GetThreatHostList(sqlite3* db, std::unordered_set<UINT32>& hosts);
 static int BatchInsertLog(sqlite3* db, DB_INSERT_BATCH& data);
-static unsigned int StartDbInsert(HANDLE hReadyEvent);
+static unsigned int StartDbInsert(HANDLE hReadyEvent, ENGINE_STATE* state);
 
 #pragma endregion
 
@@ -39,7 +40,7 @@ unsigned int __stdcall StartDbInsertThread(void* param)
 {
     THREAD_CONTEXT* context = (THREAD_CONTEXT*)param;
 
-    return StartDbInsert(context->hReadyEvent);
+    return StartDbInsert(context->hReadyEvent, context->state);
 }
 
 #pragma endregion
@@ -246,7 +247,7 @@ static int BatchInsertLog(sqlite3* db, DB_INSERT_BATCH& data)
     return 0;
 }
 
-static unsigned int StartDbInsert(HANDLE hReadyEvent)
+static unsigned int StartDbInsert(HANDLE hReadyEvent, ENGINE_STATE* state)
 {
     sqlite3* db = NULL;
 
@@ -279,20 +280,63 @@ static unsigned int StartDbInsert(HANDLE hReadyEvent)
     }
 
     // Main 에게 Thread 가 준비되었음을 알림
+    state->dbInsertRunning = true;
     SetEvent(hReadyEvent);
 
     //DB Insert Queue에서 Pop 하여 DB에 저장
     while (s_dbInsertQueue.WaitAndPop(data))
     {
+        // 엔진 대기 상태 처리
+        if (!WaitForEngineWaiting(state, L"DbInsert"))
+            break;
+        
+        // 엔진 오류 상태 처리
+        if (state->status == ENGINE_ERROR)
+        {
+            wprintf(L"[ERROR][DbInsert] 엔진이 강제 종료됩니다.\n");
+            break;
+        }
+
+
+        // 로그 배치 삽입
         if (BatchInsertLog(db, data) > 0)
         {
             wprintf(L"[FAIL][DbInsert] 로그 배치 삽입 실패\n");
             continue;
         }
+
+        // 엔진 중지 상태 처리
+        if (state->status == ENGINE_STOPPED || state->status == ENGINE_STOPPING)
+        {
+            break;
+        }
+    }
+
+    // 엔진 중지 상태에서 대기 중인 로그 배치 삽입 처리
+    if (state->status == ENGINE_STOPPING || state->status == ENGINE_STOPPED)
+    {
+        s_dbInsertQueue.Stop();
+        DWORD64 startTime = GetTickCount64();
+
+        while (s_dbInsertQueue.TryPop(data))
+        {
+            if (GetTickCount64() - startTime > TIMEOUT_STOPPING)
+            {
+                wprintf(L"[WARN][DbInsert] 대기 시간 초과로 로그 배치 삽입을 중단합니다. 남은 큐 크기: %zu\n", s_dbInsertQueue.queue.size());
+                break;
+            }
+            if (BatchInsertLog(db, data) > 0)
+            {
+                wprintf(L"[FAIL][DbInsert] 로그 배치 삽입 실패\n");
+                continue;
+            }
+        }
+        wprintf(L"[OK][DbInsert] 로그 배치 삽입 스레드 정상 종료\n");
     }
 
     // DB Close 및 종료
     sqlite3_close(db);
+    state->dbInsertRunning = false;
     return 0;
 }
 
