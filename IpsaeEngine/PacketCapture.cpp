@@ -68,12 +68,12 @@ unsigned int StartPacketCapture(HANDLE hReadyEvent)
         "and (ip.DstAddr < 10.0.0.0 or ip.DstAddr > 10.255.255.255) "
         "and (ip.DstAddr < 172.16.0.0 or ip.DstAddr > 172.31.255.255) "
         "and (ip.DstAddr < 192.168.0.0 or ip.DstAddr > 192.168.255.255) ";
-    
+
     const char* errorStr = NULL;
     UINT errorPos = 0;
     if (!WinDivertHelperCompileFilter(filter, WINDIVERT_LAYER_NETWORK, NULL, 0, &errorStr, &errorPos));
     {
-        wprintf(L"[FAIL][PacketCapture] Filter error at position %u: %hs\n", errorPos, errorStr);
+        spdlog::error("[PacketCapture] Filter error at position {}: {}", errorPos, errorStr ? errorStr : "unknown");
     }
     HANDLE handle = WinDivertOpen(filter, WINDIVERT_LAYER_NETWORK, 0,
         WINDIVERT_FLAG_SNIFF | WINDIVERT_FLAG_RECV_ONLY);
@@ -81,13 +81,13 @@ unsigned int StartPacketCapture(HANDLE hReadyEvent)
     if (handle == INVALID_HANDLE_VALUE)
     {
         DWORD err = GetLastError();
-        wprintf(L"[FAIL][PacketCapture] WinDivertOpen: error %lu\n", err);
+        spdlog::error("[PacketCapture] WinDivertOpen: error {}", err);
         if (err == ERROR_ACCESS_DENIED)
-            wprintf(L"       -> 관리자 권한으로 실행하세요.\n");
+            spdlog::error("[PacketCapture]   -> 관리자 권한으로 실행하세요.");
         else if (err == 2)
-            wprintf(L"       -> WinDivert.dll / WinDivert64.sys 파일을 찾을 수 없습니다.\n");
+            spdlog::error("[PacketCapture]   -> WinDivert.dll / WinDivert64.sys 파일을 찾을 수 없습니다.");
         else if (err == 577)
-            wprintf(L"       -> 드라이버 서명 검증 실패. 테스트 서명 모드를 확인하세요.\n");
+            spdlog::error("[PacketCapture]   -> 드라이버 서명 검증 실패. 테스트 서명 모드를 확인하세요.");
         //SetEvent(hReadyEvent);
         return 1;
     }
@@ -95,15 +95,14 @@ unsigned int StartPacketCapture(HANDLE hReadyEvent)
 	// Main 에게 Thread 가 준비되었음을 알림
     //SetEvent(hReadyEvent);
 
-    wprintf(L"[OK][PacketCapture] 패킷 캡처 시작\n");
-    wprintf(L"%-5s %-5s %-21s    %-21s %s\n",
-        L"방향", L"프로토콜", L"출발지", L"목적지", L"크기");
-    wprintf(L"───────────────────────────────────────────────────────────────────\n");
+    spdlog::info("[PacketCapture] 패킷 캡처 시작");
+    spdlog::info("{:<5} {:<8} {:<21}    {:<21} {}", "방향", "프로토콜", "출발지", "목적지", "크기");
+    spdlog::info("───────────────────────────────────────────────────────────────────");
 
     unsigned char* packet = (unsigned char*)malloc(PACKET_BUFSIZE);
-    if (!packet) 
+    if (!packet)
     {
-        wprintf(L"[FAIL][PacketCapture] 패킷 버퍼 할당 실패\n");
+        spdlog::error("[PacketCapture] 패킷 버퍼 할당 실패");
         WinDivertClose(handle);
 		return 1;
     }
@@ -133,7 +132,7 @@ unsigned int StartPacketCapture(HANDLE hReadyEvent)
 
             if (ipHdr == NULL) continue;
 
-            const wchar_t* dir = addr.Outbound ? L"OUT" : L"IN ";
+            const char* dir = addr.Outbound ? "OUT" : "IN ";
 
             char srcStr[32], dstStr[32];
             FormatIPv4(ipHdr->SrcAddr, srcStr, sizeof(srcStr));
@@ -155,29 +154,29 @@ unsigned int StartPacketCapture(HANDLE hReadyEvent)
 
             if (srcPort != 0)
             {
-                wprintf(L"[%s] %hs %hs:%-5u -> %hs:%-5u  len=%u\n",
+                spdlog::info("[{}] {} {}:{} -> {}:{}  len={}",
                     dir, ProtocolName(protocol),
                     srcStr, srcPort, dstStr, dstPort, totalLen);
             }
             else
             {
-                wprintf(L"[%s] %hs %-21hs -> %-21hs  len=%u\n",
+                spdlog::info("[{}] {} {} -> {}  len={}",
                     dir, ProtocolName(protocol),
                     srcStr, dstStr, totalLen);
             }
         }
     }
-	catch (const std::exception& ex)
+    catch (const std::exception& ex)
     {
-        wprintf(L"[ERROR][PacketCapture] 패킷 수신 중 예외 발생: %hs\n", ex.what());
+        spdlog::error("[PacketCapture] 패킷 수신 중 예외 발생: {}", ex.what());
     }
-    
+
     free(packet);
 
     if (WinDivertClose(handle))
-        wprintf(L"[OK][PacketCapture] WinDivert 핸들 닫기 성공\n");
+        spdlog::info("[PacketCapture] WinDivert 핸들 닫기 성공");
     else
-        wprintf(L"[FAIL][PacketCapture] WinDivertClose: error %lu\n", GetLastError());
+        spdlog::error("[PacketCapture] WinDivertClose: error {}", GetLastError());
 
     return 0;
 }

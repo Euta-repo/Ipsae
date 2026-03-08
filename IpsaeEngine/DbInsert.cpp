@@ -54,7 +54,7 @@ static int CheckDbTableList(sqlite3* db)
     // DB 유효성 검사
     if (db == NULL)
     {
-        wprintf(L"[FAIL][DbInsert] DB 연결 확인 실패: DB is NULL\n");
+        spdlog::error("[DbInsert] DB 연결 확인 실패: DB is NULL");
         return 1;
     }
 
@@ -63,21 +63,21 @@ static int CheckDbTableList(sqlite3* db)
     int rc = sqlite3_prepare_v2(db, queryString, -1, &stmt, NULL);
     if (rc != SQLITE_OK)
     {
-        wprintf(L"[FAIL][DbInsert] SELECT: %hs\n", sqlite3_errmsg(db));
+        spdlog::error("[DbInsert] SELECT: {}", sqlite3_errmsg(db));
         sqlite3_finalize(stmt);
         return 1;
     }
 
     // SQL 실행 결과 및 결과 처리
     for (auto tableName : DB_LIST)
-    {		
+    {
         sqlite3_bind_text(stmt, 1, tableName, -1, SQLITE_STATIC);
         sqlite3_step(stmt);
 
         int exists = sqlite3_column_int(stmt, 0);
         if (exists == 0)
         {
-            wprintf(L"[FAIL][DbInsert] 테이블 확인 실패: %hs\n", tableName);
+            spdlog::error("[DbInsert] 테이블 확인 실패: {}", tableName);
             sqlite3_finalize(stmt);
 
             return 1;
@@ -87,7 +87,7 @@ static int CheckDbTableList(sqlite3* db)
         sqlite3_reset(stmt);
         sqlite3_clear_bindings(stmt);
     }
-    
+
     // SQL 문 종료 및 결과 반환
     sqlite3_finalize(stmt);
     return 0;
@@ -102,7 +102,7 @@ static int GetThreatHostList(sqlite3* db, std::unordered_set<UINT32>& hosts)
     // DB 유효성 검사
     if (db == NULL)
     {
-        wprintf(L"[FAIL][DbInsert] DB 연결 확인 실패: DB is NULL\n");
+        spdlog::error("[DbInsert] DB 연결 확인 실패: DB is NULL");
         return 1;
     }
 
@@ -111,7 +111,7 @@ static int GetThreatHostList(sqlite3* db, std::unordered_set<UINT32>& hosts)
     int rc = sqlite3_prepare_v2(db, queryString, -1, &stmt, NULL);
     if (rc != SQLITE_OK)
     {
-        wprintf(L"[FAIL][DbInsert] SELECT: %hs\n", sqlite3_errmsg(db));
+        spdlog::error("[DbInsert] SELECT: {}", sqlite3_errmsg(db));
         sqlite3_finalize(stmt);
         return 1;
     }
@@ -151,13 +151,13 @@ static int BatchInsertLog(sqlite3* db, DB_INSERT_BATCH& data)
     // SQL 준비
     if (sqlite3_prepare_v2(db, queryNetwork, -1, &stmtNetwork, NULL) != SQLITE_OK)
     {
-        wprintf(L"[FAIL][DbInsert] INSERT Network Log: %hs\n", sqlite3_errmsg(db));
+        spdlog::error("[DbInsert] INSERT Network Log: {}", sqlite3_errmsg(db));
         return 1;
     }
 
     if (sqlite3_prepare_v2(db, queryProcess, -1, &stmtProcess, NULL) != SQLITE_OK)
     {
-        wprintf(L"[FAIL][DbInsert] INSERT Process Log: %hs\n", sqlite3_errmsg(db));
+        spdlog::error("[DbInsert] INSERT Process Log: {}", sqlite3_errmsg(db));
         sqlite3_finalize(stmtNetwork);
         return 1;
     }
@@ -184,13 +184,13 @@ static int BatchInsertLog(sqlite3* db, DB_INSERT_BATCH& data)
         // SQL 실행
         if (sqlite3_step(stmtNetwork) != SQLITE_DONE)
         {
-            wprintf(L"[FAIL][DbInsert] INSERT Network Log: %hs\n", sqlite3_errmsg(db));
+            spdlog::error("[DbInsert] INSERT Network Log: {}", sqlite3_errmsg(db));
             sqlite3_exec(db, "ROLLBACK;", NULL, NULL, NULL);
             sqlite3_finalize(stmtNetwork);
             sqlite3_finalize(stmtProcess);
             return 1;
         }
-        
+
         // 유해하지 않은 네트워크 로그는 프로세스 로그 저장하지 않음
         if (!net.isThreat)
         {
@@ -219,7 +219,7 @@ static int BatchInsertLog(sqlite3* db, DB_INSERT_BATCH& data)
             // SQL 실행
             if (sqlite3_step(stmtProcess) != SQLITE_DONE)
             {
-                wprintf(L"[FAIL][DbInsert] INSERT Process Log: %hs\n", sqlite3_errmsg(db));
+                spdlog::error("[DbInsert] INSERT Process Log: {}", sqlite3_errmsg(db));
                 sqlite3_exec(db, "ROLLBACK;", NULL, NULL, NULL);
                 sqlite3_finalize(stmtNetwork);
                 sqlite3_finalize(stmtProcess);
@@ -238,7 +238,7 @@ static int BatchInsertLog(sqlite3* db, DB_INSERT_BATCH& data)
 
     // 트랜잭션 커밋
     sqlite3_exec(db, "COMMIT;", NULL, NULL, NULL);
-    
+
     // SQL 문 종료
     sqlite3_finalize(stmtNetwork);
     sqlite3_finalize(stmtProcess);
@@ -257,7 +257,7 @@ static unsigned int StartDbInsert(HANDLE hReadyEvent, ENGINE_STATE* state)
     int rc = sqlite3_open("ipsaedb.db", &db);
     if (rc != SQLITE_OK)
     {
-        wprintf(L"[FAIL][DbInsert] sqlite3_open: %hs\n", sqlite3_errmsg(db));
+        spdlog::error("[DbInsert] sqlite3_open: {}", sqlite3_errmsg(db));
         sqlite3_close(db);
         return 1;
     }
@@ -265,7 +265,7 @@ static unsigned int StartDbInsert(HANDLE hReadyEvent, ENGINE_STATE* state)
     // Table 점검
     if (CheckDbTableList(db) > 0)
     {
-        wprintf(L"[FAIL][DbInsert] 테이블 확인 실패\n");
+        spdlog::error("[DbInsert] 테이블 확인 실패");
         sqlite3_close(db);
         return 1;
     }
@@ -273,7 +273,7 @@ static unsigned int StartDbInsert(HANDLE hReadyEvent, ENGINE_STATE* state)
     // 유해 IP 목록 수집
     if (GetThreatHostList(db, threat_hosts) > 0)
     {
-        wprintf(L"[FAIL][DbInsert] 유해 호스트 목록 조회 실패\n");
+        spdlog::error("[DbInsert] 유해 호스트 목록 조회 실패");
         sqlite3_close(db);
         return 1;
     }
@@ -286,13 +286,13 @@ static unsigned int StartDbInsert(HANDLE hReadyEvent, ENGINE_STATE* state)
     while (s_dbInsertQueue.WaitAndPop(data))
     {
         // 엔진 대기 상태 처리
-        if (!WaitForEngineWaiting(state, L"DbInsert"))
+        if (!WaitForEngineWaiting(state, "DbInsert"))
             break;
-        
+
         // 엔진 오류 상태 처리
         if (state->status == ENGINE_ERROR)
         {
-            wprintf(L"[ERROR][DbInsert] 엔진이 강제 종료됩니다.\n");
+            spdlog::error("[DbInsert] 엔진이 강제 종료됩니다.");
             break;
         }
 
@@ -300,7 +300,7 @@ static unsigned int StartDbInsert(HANDLE hReadyEvent, ENGINE_STATE* state)
         // 로그 배치 삽입
         if (BatchInsertLog(db, data) > 0)
         {
-            wprintf(L"[FAIL][DbInsert] 로그 배치 삽입 실패\n");
+            spdlog::error("[DbInsert] 로그 배치 삽입 실패");
             continue;
         }
 
@@ -321,16 +321,16 @@ static unsigned int StartDbInsert(HANDLE hReadyEvent, ENGINE_STATE* state)
         {
             if (GetTickCount64() - startTime > TIMEOUT_STOPPING)
             {
-                wprintf(L"[WARN][DbInsert] 대기 시간 초과로 로그 배치 삽입을 중단합니다. 남은 큐 크기: %zu\n", s_dbInsertQueue.queue.size());
+                spdlog::warn("[DbInsert] 대기 시간 초과로 로그 배치 삽입을 중단합니다. 남은 큐 크기: {}", s_dbInsertQueue.queue.size());
                 break;
             }
             if (BatchInsertLog(db, data) > 0)
             {
-                wprintf(L"[FAIL][DbInsert] 로그 배치 삽입 실패\n");
+                spdlog::error("[DbInsert] 로그 배치 삽입 실패");
                 continue;
             }
         }
-        wprintf(L"[OK][DbInsert] 로그 배치 삽입 스레드 정상 종료\n");
+        spdlog::info("[DbInsert] 로그 배치 삽입 스레드 정상 종료");
     }
 
     // DB Close 및 종료

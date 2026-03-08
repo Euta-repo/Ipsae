@@ -143,4 +143,6 @@ struct ThreadSafeQueue
 // Common functions
 // =============================================================================================
 
-bool WaitForEngineWaiting(ENGINE_STATE* state, const wchar_t* caller);
+void InitializeLogger();
+
+bool WaitForEngineWaiting(ENGINE_STATE* state, const char* caller);

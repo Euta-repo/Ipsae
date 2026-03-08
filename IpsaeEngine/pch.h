@@ -15,3 +15,7 @@
 #include <unordered_set>
 #include <condition_variable>
 #include <vector>
+#include <memory>
+
+// Logging
+#include <spdlog/spdlog.h>

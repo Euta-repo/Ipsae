@@ -30,12 +30,13 @@ static BOOL WINAPI CtrlHandler(DWORD ctrlType)
 
 int wmain()
 {
-    // 콘솔을 UTF-16 모드로 설정 (유니코드 출력 지원)
-    //_setmode(_fileno(stdout), _O_U16TEXT);
+    SetConsoleOutputCP(CP_UTF8);
 
     /* ============================== */
     // 1. Initialize 작성
     /* ============================== */
+    InitializeLogger();
+
     ENGINE_STATE state;
     state.status = ENGINE_INIT;
 
@@ -120,6 +121,6 @@ int wmain()
     StartPacketCapture(sampleHandle);
 
     StopPacketCapture();
-    wprintf(L"\n[OK][main] Engine 종료\n");
+    spdlog::info("[main] Engine 종료");
     return 0;
 }
