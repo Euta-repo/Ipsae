@@ -46,6 +46,15 @@ unsigned int __stdcall StartDbInsertThread(void* param)
 
 #pragma region Static functions
 
+static void StopDbInsert(sqlite3* db, ENGINE_STATE* state)
+{
+    if (db != NULL)
+        sqlite3_close(db);
+
+    state->dbInsertRunning = false;
+}
+
+
 static int CheckDbTableList(sqlite3* db)
 {
     // 초기화
@@ -258,7 +267,8 @@ static unsigned int StartDbInsert(HANDLE hReadyEvent, ENGINE_STATE* state)
     if (rc != SQLITE_OK)
     {
         spdlog::error("[DbInsert] sqlite3_open: {}", sqlite3_errmsg(db));
-        sqlite3_close(db);
+		StopDbInsert(db, state);
+        SetEvent(hReadyEvent);
         return 1;
     }
 
@@ -266,7 +276,8 @@ static unsigned int StartDbInsert(HANDLE hReadyEvent, ENGINE_STATE* state)
     if (CheckDbTableList(db) > 0)
     {
         spdlog::error("[DbInsert] 테이블 확인 실패");
-        sqlite3_close(db);
+        StopDbInsert(db, state);
+        SetEvent(hReadyEvent);
         return 1;
     }
 
@@ -274,7 +285,8 @@ static unsigned int StartDbInsert(HANDLE hReadyEvent, ENGINE_STATE* state)
     if (GetThreatHostList(db, threat_hosts) > 0)
     {
         spdlog::error("[DbInsert] 유해 호스트 목록 조회 실패");
-        sqlite3_close(db);
+        StopDbInsert(db, state);
+        SetEvent(hReadyEvent);
         return 1;
     }
 
@@ -321,7 +333,7 @@ static unsigned int StartDbInsert(HANDLE hReadyEvent, ENGINE_STATE* state)
         {
             if (GetTickCount64() - startTime > TIMEOUT_STOPPING)
             {
-                spdlog::warn("[DbInsert] 대기 시간 초과로 로그 배치 삽입을 중단합니다. 남은 큐 크기: {}", s_dbInsertQueue.queue.size());
+                spdlog::warn("[DbInsert] 대기 시간 초과로 로그 배치 삽입을 중단합니다. 남은 큐 크기: {}", s_dbInsertQueue.Size());
                 break;
             }
             if (BatchInsertLog(db, data) > 0)
@@ -334,8 +346,7 @@ static unsigned int StartDbInsert(HANDLE hReadyEvent, ENGINE_STATE* state)
     }
 
     // DB Close 및 종료
-    sqlite3_close(db);
-    state->dbInsertRunning = false;
+	StopDbInsert(db, state);
     return 0;
 }
 
