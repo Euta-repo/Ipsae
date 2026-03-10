@@ -96,6 +96,14 @@ static unsigned int StartPacketCapture(HANDLE hReadyEvent, ENGINE_STATE* state)
         "and (ip.DstAddr < 172.16.0.0 or ip.DstAddr > 172.31.255.255) "
         "and (ip.DstAddr < 192.168.0.0 or ip.DstAddr > 192.168.255.255) ";
 
+    // 만약 filter 문법 디버깅 시 아래 코드로 필터 컴파일 에러 확인 가능
+    // 만약 filter 문법 디버깅 시 아래 코드로 필터 컴파일 에러 확인 가능
+    //const char* errorStr = NULL;
+    //UINT errorPos = 0;
+    //if (!WinDivertHelperCompileFilter(filter, WINDIVERT_LAYER_NETWORK, NULL, 0, &errorStr, &errorPos))
+    //{
+    //    spdlog::error("[PacketCapture] Filter error at position {}: {}", errorPos, errorStr ? errorStr : "unknown");
+    //}
     s_handle = WinDivertOpen(filter, WINDIVERT_LAYER_NETWORK, 0,
         WINDIVERT_FLAG_SNIFF | WINDIVERT_FLAG_RECV_ONLY);
 
