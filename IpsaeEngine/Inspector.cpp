@@ -1,6 +1,8 @@
-#include "DbInsert.h"
 #include "pch.h"
+#include "Inspector.h"
+#include "DbInsert.h"
 #include "PacketCapture.h"
+
 #include <WinSock2.h> // Windows Sockets API
 #include <ws2tcpip.h>
 #include <iphlpapi.h> // IP Helper API
@@ -46,7 +48,7 @@ unsigned int __stdcall StartInspectorThread(void* param)
 		// 예: DB에서 위협 호스트 목록과 비교하여 로그 생성
 	}
 	*/
-	return 0;
+	return StartInspector(context->hReadyEvent, context->state);
 }
 
 #pragma endregion
@@ -87,7 +89,7 @@ static unsigned int StartInspector(HANDLE hReadyEvent, ENGINE_STATE* state)
 			memset(ipStr, 0, sizeof(ipStr));
 
 			// IP 주소를 문자열로 변환
-			FormatIPv4(ip, ipStr, sizeof(ipStr));
+			IpToStr(ip, ipStr, sizeof(ipStr));
 
 			// IP 저장 - DB_INSERT_DATA 구조체에 IP 저장
 			dbData.network.remoteIp = ip;

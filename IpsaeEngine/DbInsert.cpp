@@ -1,7 +1,6 @@
 #include "pch.h"
 #include "DbInsert.h"
 #include "sqlite3.h"
-#include "Models.h"
 
 #pragma comment(lib, "sqlite3.lib")
 

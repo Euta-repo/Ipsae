@@ -173,6 +173,7 @@ copy /Y "$(ProjectDir)lib\x64\sqlite3.dll" "$(OutDir)"</Command>
     <ClCompile Include="PacketCapture.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="Inspector.h" />
     <ClInclude Include="IpcTool.h" />
     <ClInclude Include="Models.h" />
     <ClInclude Include="pch.h" />
