@@ -1,6 +1,8 @@
 #include "pch.h"
 #include "Common.h"
+#include "IpcTool.h"
 #include "DbInsert.h"
+#include "Inspector.h"
 #include "PacketCapture.h"
 
 #define THREAD_COUNT 4
@@ -50,9 +52,9 @@ int wmain()
     HANDLE hThreads[THREAD_COUNT] = {};
     THREAD_CONTEXT threadContexts[THREAD_COUNT] = {};
     THREAD_FUNC threadFunctions[THREAD_COUNT] = { 
-        WorkerThread,
+        StartIpcToolThread,
         StartDbInsertThread, 
-        WorkerThread, 
+        StartInspectorThread, 
         StartPacketCaptureThread
     };
 
