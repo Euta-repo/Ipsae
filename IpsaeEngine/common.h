@@ -74,10 +74,10 @@ struct ThreadSafeQueue
 	void Push(const T& item)
 	{
 		{
-		std::lock_guard<std::mutex> lock(mutex);
-		if (stopped) return;
-		queue.push(item);
-	}
+			std::lock_guard<std::mutex> lock(mutex);
+			if (stopped) return;
+			queue.push(item);
+		}
 		cv.notify_one();
 	}
 

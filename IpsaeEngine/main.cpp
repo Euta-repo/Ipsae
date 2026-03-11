@@ -14,7 +14,6 @@ static unsigned int __stdcall WorkerThread(void* param)
     return 0;
 }
 
-bool g_running = true;
 //
 //static BOOL WINAPI CtrlHandler(DWORD ctrlType)
 //{

@@ -157,7 +157,7 @@ static unsigned int StartPacketCapture(HANDLE hReadyEvent, ENGINE_STATE* state)
 		} else if (batchResult != 0) {
             spdlog::error("[PacketCapture] 알 수 없는 오류 발생");
             break;
-            }
+        }
 
 		// 일정 시간마다 배치 큐에 추가
 		DWORD64 now = GetTickCount64();
