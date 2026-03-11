@@ -104,7 +104,9 @@ struct ThreadSafeQueue
 	/// <returns>요소를 성공적으로 꺼냈으면 true, 큐가 중지되고 비어있으면 false를 반환합니다.</returns>
 	bool WaitAndPop(T& out)
 	{
+		// 대기 중인 스레드가 큐에 요소가 추가되거나 큐가 중지될 때까지 대기합니다.
 		std::unique_lock<std::mutex> lock(mutex);
+		// 큐가 비어있고 중지되지 않은 경우에만 대기합니다.
 		cv.wait(lock, [this] { return !queue.empty() || stopped; });
 
 		if (stopped && queue.empty())

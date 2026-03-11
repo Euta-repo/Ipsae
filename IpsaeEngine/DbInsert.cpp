@@ -294,14 +294,14 @@ static unsigned int StartDbInsert(HANDLE hReadyEvent, ENGINE_STATE* state)
     state->dbInsertRunning = true;
     SetEvent(hReadyEvent);
 
-    //DB Insert Queue에서 Pop 하여 DB에 저장
+    // DB Insert Queue에서 Pop 하여 DB에 저장
     while (s_dbInsertQueue.WaitAndPop(data))
     {
-        // 엔진 대기 상태 처리
+		// 엔진 대기 상태 처리
         if (!WaitForEngineWaiting(state, "DbInsert"))
             break;
 
-        // 엔진 오류 상태 처리
+		// 엔진 오류 상태 처리
         if (state->status == ENGINE_ERROR)
         {
             spdlog::error("[DbInsert] 엔진이 강제 종료됩니다.");
