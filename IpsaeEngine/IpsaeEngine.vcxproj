@@ -163,6 +163,7 @@ copy /Y "$(ProjectDir)lib\x64\sqlite3.dll" "$(OutDir)"</Command>
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="Common.cpp" />
+    <ClCompile Include="IpcTool.cpp" />
     <ClCompile Include="pch.cpp">
       <PrecompiledHeader>Create</PrecompiledHeader>
     </ClCompile>
@@ -171,11 +172,15 @@ copy /Y "$(ProjectDir)lib\x64\sqlite3.dll" "$(OutDir)"</Command>
     <ClCompile Include="PacketCapture.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="IpcTool.h" />
     <ClInclude Include="Models.h" />
     <ClInclude Include="pch.h" />
     <ClInclude Include="Common.h" />
     <ClInclude Include="DbInsert.h" />
     <ClInclude Include="PacketCapture.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include=".editorconfig" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

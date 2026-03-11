@@ -30,6 +30,9 @@
     <ClCompile Include="Common.cpp">
       <Filter>소스 파일</Filter>
     </ClCompile>
+    <ClCompile Include="IpcTool.cpp">
+      <Filter>소스 파일</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="pch.h">
@@ -47,5 +50,11 @@
     <ClInclude Include="Models.h">
       <Filter>헤더 파일</Filter>
     </ClInclude>
+    <ClInclude Include="IpcTool.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include=".editorconfig" />
   </ItemGroup>
 </Project>
