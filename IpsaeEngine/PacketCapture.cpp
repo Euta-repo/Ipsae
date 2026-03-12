@@ -46,12 +46,14 @@ void StopPacketCapture(const char* caller)
 
 static void StopRunning(ENGINE_STATE* state)
 {
+	// WinDivert handle 닫기
     if (s_handle != INVALID_HANDLE_VALUE)
     {
         WinDivertClose(s_handle);
 		s_handle = INVALID_HANDLE_VALUE;
     }
 
+	// 패킷 캡처 상태 플래그 업데이트
     s_running = false;
     state->packetCaptureRunning = false;
 }
@@ -60,9 +62,11 @@ static int BatchPacketCapture(HANDLE handle, unsigned char* packet, UINT* recvLe
 {
     try 
     {
+		// 패킷 수신
         if (!WinDivertRecv(handle, packet, PACKET_BUFSIZE, recvLen, addr))
             return 1;
 
+		// IP 헤더 파싱
         PWINDIVERT_IPHDR ipHdr = NULL;
         WinDivertHelperParsePacket(
             packet, *recvLen,
@@ -71,6 +75,7 @@ static int BatchPacketCapture(HANDLE handle, unsigned char* packet, UINT* recvLe
 
         if (ipHdr == NULL) return 2;
 
+		// 원격 호스트 IP 주소 추출 및 배치에 추가
         UINT32 remoteHost = addr->Outbound ? ipHdr->DstAddr : ipHdr->SrcAddr;
         batch.insert(remoteHost);
     }
@@ -90,6 +95,7 @@ static unsigned int StartPacketCapture(HANDLE hReadyEvent, ENGINE_STATE* state)
     DWORD64 lastFlushTime = 0;
 
     s_running = true;
+	// WinDivert 필터 - 아웃바운드 TCP ACK, UDP, ICMP 패킷 중 사설 IP 대역이 아닌 패킷만 캡처
     const char* filter =
         "outbound and ((tcp and tcp.Ack) or udp or icmp) "
         "and (ip.DstAddr < 10.0.0.0 or ip.DstAddr > 10.255.255.255) "
@@ -104,9 +110,11 @@ static unsigned int StartPacketCapture(HANDLE hReadyEvent, ENGINE_STATE* state)
     //    spdlog::error("[PacketCapture] Filter error at position {}: {}", errorPos, errorStr ? errorStr : "unknown");
     //}
 
+	// WinDivert handle Open
     s_handle = WinDivertOpen(filter, WINDIVERT_LAYER_NETWORK, 0,
         WINDIVERT_FLAG_SNIFF | WINDIVERT_FLAG_RECV_ONLY);
 
+	// WinDivertOpen 실패 시 에러 처리
     if (s_handle == INVALID_HANDLE_VALUE)
     {
         DWORD err = GetLastError();
@@ -122,6 +130,7 @@ static unsigned int StartPacketCapture(HANDLE hReadyEvent, ENGINE_STATE* state)
         return 1;
     }
 
+	// 패킷 버퍼 할당
     auto packet = std::make_unique<unsigned char[]>(PACKET_BUFSIZE);
 
     // Main 에게 Thread 가 준비되었음을 알림
@@ -130,9 +139,10 @@ static unsigned int StartPacketCapture(HANDLE hReadyEvent, ENGINE_STATE* state)
 
     spdlog::info("[PacketCapture] 패킷 캡처 시작");
 
+	// 패킷 캡처 루프
     WINDIVERT_ADDRESS addr;
     UINT recvLen = 0;
-    lastFlushTime = GetTickCount64();
+    lastFlushTime = GetTickCount64(); // 배치 타이머
 
     while (s_running)
     {
