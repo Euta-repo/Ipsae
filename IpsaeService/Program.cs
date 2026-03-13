@@ -2,7 +2,7 @@ using IpsaeService;
 
 internal class Program
 {
-    private static void Main(string[] args)
+    private static async Task Main(string[] args)
     {
         var builder = Host.CreateApplicationBuilder(args);
         builder.Services.AddWindowsService(options =>
@@ -12,6 +12,6 @@ internal class Program
         builder.Services.AddHostedService<Worker>();
 
         var host = builder.Build();
-        host.Run();
+        await host.RunAsync();
     }
 }

@@ -16,6 +16,7 @@ public class Worker : BackgroundService
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         _logger.LogInformation("IpsaeIDS Pipe Server starting");
+        await Task.Yield();
 
         while (!stoppingToken.IsCancellationRequested)
         {

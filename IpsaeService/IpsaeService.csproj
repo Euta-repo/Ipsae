@@ -1,12 +1,22 @@
-<Project Sdk="Microsoft.NET.Sdk.Worker">
+﻿<Project Sdk="Microsoft.NET.Sdk.Worker">
 
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
+    <TargetFramework>net8.0-windows8.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UserSecretsId>dotnet-IpsaeService-364904b4-71c4-469f-88aa-e1bdf8646211</UserSecretsId>
-    <OutputType>exe</OutputType>
+    <OutputType>Exe</OutputType>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <RunPostBuildEvent>OnOutputUpdated</RunPostBuildEvent>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
+    <IsPublishable>False</IsPublishable>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|AnyCPU'">
+    <IsPublishable>False</IsPublishable>
   </PropertyGroup>
 
   <ItemGroup>
@@ -17,4 +27,12 @@
   <ItemGroup>
     <ProjectReference Include="..\IpsaeShared\IpsaeShared.csproj" />
   </ItemGroup>
+
+  <Target Name="PostBuild" AfterTargets="PostBuildEvent">
+    <Exec Command="sc create IpsaeIDS binpath=&quot;$(TargetDir)$(AssemblyName).exe&quot; start=auto&#xD;&#xA;sc start IpsaeIDS" />
+  </Target>
+
+  <Target Name="PreBuild" BeforeTargets="PreBuildEvent">
+    <Exec Command="sc delete IpsaeIDS  || exit 0" />
+  </Target>
 </Project>
