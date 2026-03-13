@@ -1,16 +1,9 @@
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Windows.Media;
+using IpsaeShared;
 
 namespace Ipsae.Service;
-
-public enum ServiceStatus
-{
-    Active,
-    Inactive,
-    Starting,
-    Stopping
-}
 
 public class ServiceState : INotifyPropertyChanged
 {
@@ -24,13 +17,13 @@ public class ServiceState : INotifyPropertyChanged
     private static readonly Color RedGlow = Color.FromRgb(0xCC, 0x55, 0x55);
     private static readonly Color OrangeGlow = Color.FromRgb(0xCC, 0x88, 0x33);
 
-    private ServiceStatus _status = ServiceStatus.Inactive;
+    private ServiceStatusCode _status = ServiceStatusCode.Inactive;
 
     private ServiceState() { }
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
-    public ServiceStatus Status
+    public ServiceStatusCode Status
     {
         get => _status;
         set
@@ -48,49 +41,49 @@ public class ServiceState : INotifyPropertyChanged
         }
     }
 
-    public bool IsRunning => _status == ServiceStatus.Active;
-    public bool IsTransitioning => _status is ServiceStatus.Starting or ServiceStatus.Stopping;
+    public bool IsRunning => _status == ServiceStatusCode.Active;
+    public bool IsTransitioning => _status is ServiceStatusCode.Starting or ServiceStatusCode.Stopping;
 
     public string StatusText => _status switch
     {
-        ServiceStatus.Active => "Active",
-        ServiceStatus.Inactive => "Inactive",
-        ServiceStatus.Starting => "Starting",
-        ServiceStatus.Stopping => "Stopping",
+        ServiceStatusCode.Active => "Active",
+        ServiceStatusCode.Inactive => "Inactive",
+        ServiceStatusCode.Starting => "Starting",
+        ServiceStatusCode.Stopping => "Stopping",
         _ => "Unknown"
     };
 
     public string StatusSub => _status switch
     {
-        ServiceStatus.Active => "동작중",
-        ServiceStatus.Inactive => "동작 중지",
-        ServiceStatus.Starting => "시작 중",
-        ServiceStatus.Stopping => "중지 중",
+        ServiceStatusCode.Active => "동작중",
+        ServiceStatusCode.Inactive => "동작 중지",
+        ServiceStatusCode.Starting => "시작 중",
+        ServiceStatusCode.Stopping => "중지 중",
         _ => "알 수 없음"
     };
 
     public SolidColorBrush StatusColor => _status switch
     {
-        ServiceStatus.Active => GreenBrush,
-        ServiceStatus.Inactive => RedBrush,
-        ServiceStatus.Starting or ServiceStatus.Stopping => OrangeBrush,
+        ServiceStatusCode.Active => GreenBrush,
+        ServiceStatusCode.Inactive => RedBrush,
+        ServiceStatusCode.Starting or ServiceStatusCode.Stopping => OrangeBrush,
         _ => RedBrush
     };
 
     public Color StatusGlowColor => _status switch
     {
-        ServiceStatus.Active => GreenGlow,
-        ServiceStatus.Inactive => RedGlow,
-        ServiceStatus.Starting or ServiceStatus.Stopping => OrangeGlow,
+        ServiceStatusCode.Active => GreenGlow,
+        ServiceStatusCode.Inactive => RedGlow,
+        ServiceStatusCode.Starting or ServiceStatusCode.Stopping => OrangeGlow,
         _ => RedGlow
     };
 
     public string StatusLabel => _status switch
     {
-        ServiceStatus.Active => "● MONITORING",
-        ServiceStatus.Inactive => "● INACTIVE",
-        ServiceStatus.Starting => "● STARTING",
-        ServiceStatus.Stopping => "● STOPPING",
+        ServiceStatusCode.Active => "● MONITORING",
+        ServiceStatusCode.Inactive => "● INACTIVE",
+        ServiceStatusCode.Starting => "● STARTING",
+        ServiceStatusCode.Stopping => "● STOPPING",
         _ => "● UNKNOWN"
     };
 
