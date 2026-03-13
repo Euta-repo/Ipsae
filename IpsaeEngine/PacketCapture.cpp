@@ -1,5 +1,6 @@
 #include "pch.h"
 #include "PacketCapture.h"
+#include "Inspector.h"
 #include <windivert.h>
 
 #pragma comment(lib, "WinDivert.lib")
@@ -11,8 +12,6 @@
 static std::atomic<bool> s_running{ false };
 
 static HANDLE s_handle = INVALID_HANDLE_VALUE;
-
-static ThreadSafeQueue<std::unordered_set<UINT32>> s_sampleQueue;
 
 #pragma endregion
 
@@ -173,7 +172,7 @@ static unsigned int StartPacketCapture(HANDLE hReadyEvent, ENGINE_STATE* state)
 		DWORD64 now = GetTickCount64();
         if (now - lastFlushTime > 1000 && !batchSet.empty())
         {
-            s_sampleQueue.Push(std::move(batchSet));
+            EnqueueInspect(std::move(batchSet));
             batchSet.clear();
             lastFlushTime = now;
 		}
@@ -182,7 +181,7 @@ static unsigned int StartPacketCapture(HANDLE hReadyEvent, ENGINE_STATE* state)
 	// 종료 시 남은 배치가 있으면 큐에 추가
     if (!batchSet.empty())  
     {
-        s_sampleQueue.Push(std::move(batchSet));
+        EnqueueInspect(std::move(batchSet));
         batchSet.clear();
 	}
 
