@@ -33,6 +33,6 @@
   </Target>
 
   <Target Name="PreBuild" BeforeTargets="PreBuildEvent">
-    <Exec Command="sc delete IpsaeIDS  || exit 0" />
+    <Exec Command="sc stop IpsaeIDS || exit 0&#xD;&#xA;sc delete IpsaeIDS || exit 0" />
   </Target>
 </Project>
