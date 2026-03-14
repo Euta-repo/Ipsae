@@ -1,3 +1,4 @@
+#include "pch.h"
 #include <windows.h>
 #include <string>
 #include <cstdlib>
@@ -12,7 +13,7 @@ string iniInterfaceParser()
 	if (userName.empty())
 	{
 		MessageBoxA(NULL, "USERPROFILE 환경 변수를 가져오는 데 실패했습니다.", "오류", MB_OK | MB_ICONERROR);
-		return;
+		return "";
 	}
 
 	userName += "\\Documents\\Codes\\Ipsae\\IpsaeEngine\\config.ini";
@@ -21,5 +22,11 @@ string iniInterfaceParser()
 
 	GetPrivateProfileStringA("Engine", "Interface", "", interfaceOutput, sizeof(interfaceOutput), fullPath);
 
-	return std::string(interfaceOutput);
+	if (interfaceOutput[0] == '\0')
+	{
+		MessageBoxA(NULL, "config.ini 파일에서 'Interface' 값을 가져오는 데 실패했습니다.", "오류", MB_OK | MB_ICONERROR);
+		return "";
+	}
+
+	return interfaceOutput;
 }
