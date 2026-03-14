@@ -4,7 +4,7 @@
 #include "DbInsert.h"
 #include "Inspector.h"
 #include "PacketCapture.h"
-#include "config.cpp"
+#include "config.h"
 
 #define THREAD_COUNT 4
 
@@ -55,8 +55,8 @@ int wmain()
     HANDLE hThreads[THREAD_COUNT] = {};
     THREAD_CONTEXT threadContexts[THREAD_COUNT] = {};
     THREAD_FUNC threadFunctions[THREAD_COUNT] = { 
-        StartIpcClientThread,
-        StartDbInsertThread, 
+        // StartIpcClientThread,
+        // StartDbInsertThread, 
         StartInspectorThread, 
         StartPacketCaptureThread
     };

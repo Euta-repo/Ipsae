@@ -169,6 +169,7 @@
     <ClCompile Include="PacketCapture.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="config.h" />
     <ClInclude Include="Inspector.h" />
     <ClInclude Include="IpcClient.h" />
     <ClInclude Include="Models.h" />
