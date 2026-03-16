@@ -10,6 +10,7 @@ public class Worker : BackgroundService
     private readonly object _lock = new();
 
     private volatile ServiceStatusCode _status = ServiceStatusCode.Inactive;
+    private volatile EngineCommandCode _pendingEngineCommand = EngineCommandCode.None;
 
     private const string EnginePath = @"C:\Ipsae\IpsaeEngine\IpsaeEngine.exe";
     private Process? EngineProcess = null;
@@ -100,19 +101,14 @@ public class Worker : BackgroundService
 
             case PipeCommand.StartService:
                 _logger.LogInformation("Start command received");
-                // Starting the engine is an asynchronous operation, so we set the status to Starting and return immediately.
-                _status = ServiceStatusCode.Starting;
+                _pendingEngineCommand = EngineCommandCode.Start;
                 Task.Run(StartEngine);
-
-                return PipeMessage.Status(_status);
+                return PipeMessage.Status(ServiceStatusCode.Starting);
 
             case PipeCommand.StopService:
                 _logger.LogInformation("Stop command received");
-                // Stopping the engine is an asynchronous operation, so we set the status to Stopping and return immediately.
-                _status = ServiceStatusCode.Stopping;
-                Task.Run(StopEngine);
-
-                return PipeMessage.Status(_status);
+                _pendingEngineCommand = EngineCommandCode.Stop;
+                return PipeMessage.Status(ServiceStatusCode.Stopping);
 
             default:
                 return null;
@@ -184,38 +180,40 @@ public class Worker : BackgroundService
                 return PipeMessage.Status(_status);
 
             case PipeCommand.ActiveEngine:
-                _logger.LogInformation("Engine Start Received");
+                _logger.LogInformation("Engine Active Received");
                 _status = ServiceStatusCode.Active;
-
-                return PipeMessage.Status(_status);
+                return ConsumeEngineCommand();
 
             case PipeCommand.InactiveEngine:
-                _logger.LogInformation("Engine Stop Received");
+                _logger.LogInformation("Engine Inactive Received");
                 _status = ServiceStatusCode.Inactive;
+                return ConsumeEngineCommand();
 
-                return PipeMessage.Status(_status);
-            
             case PipeCommand.StartingEngine:
                 _logger.LogInformation("Engine Starting Received");
                 _status = ServiceStatusCode.Starting;
-
-                return PipeMessage.Status(_status);
+                return ConsumeEngineCommand();
 
             case PipeCommand.StoppingEngine:
                 _logger.LogInformation("Engine Stopping Received");
                 _status = ServiceStatusCode.Stopping;
-
-                return PipeMessage.Status(_status);
+                return ConsumeEngineCommand();
 
             case PipeCommand.ErrorEngine:
                 _logger.LogInformation("Engine Error Received");
                 _status = ServiceStatusCode.Error;
-
-                return PipeMessage.Status(_status);
+                return ConsumeEngineCommand();
 
             default:
                 return null;
         }
+    }
+
+    private PipeMessage ConsumeEngineCommand()
+    {
+        var cmd = _pendingEngineCommand;
+        _pendingEngineCommand = EngineCommandCode.None;
+        return PipeMessage.EngineCommand(cmd);
     }
 
     #endregion
@@ -235,7 +233,7 @@ public class Worker : BackgroundService
                 process = Process.Start(new ProcessStartInfo
                 {
                     FileName = EnginePath,
-                    Arguments = $"--db \"{IpsaePaths.DbPath}\" --ini \"{IpsaePaths.IniPath}\" --pipe \"{PipeProtocol.EnginePipeName}\"",
+                    Arguments = $"--db \"{IpsaePaths.DbPath}\" --ini \"{IpsaePaths.IniPath}\" --pipe \"{PipeProtocol.EnginePipeName}\" --log \"{IpsaePaths.EngineLogPath}\"",
                     UseShellExecute = false,
                     CreateNoWindow = true,
                 });

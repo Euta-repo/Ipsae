@@ -4,8 +4,8 @@
 #pragma region Constants
 
 // IpsaeService(C# Named Pipe 서버)와 통신할 때 사용하는 파이프 이름
-// PipeProtocol.cs의 PipeName = "IpsaeIDS" 와 동일해야 함
-static const wchar_t* PIPE_NAME = L"\\\\.\\pipe\\IpsaeEngine";
+// PipeProtocol.cs의 PipeName와 동일해야 함
+static const wchar_t* PIPE_NAME = L"\\\\.\\pipe\\";
 
 // 파이프 연결 시 최대 대기 시간 (밀리초)
 static const DWORD PIPE_CONNECT_TIMEOUT = 3000;
@@ -21,18 +21,15 @@ static const int MAX_PAYLOAD_SIZE = 1024 * 64;
 // 메시지 헤더 크기: Command(1바이트) + PayloadLength(4바이트) = 5바이트
 static const int HEADER_SIZE = 5;
 
-// ── PipeCommand (Client -> Service) ──
-static const BYTE CMD_QUERY_STATUS = 0x01; // 상태 조회
+// 추가 명령 코드 (Extend Command)
+static const BYTE CMD_QUERY_STATUS      = 0x01; // Client -> Service 상태 조회
+static const BYTE CMD_STATUS_RESPONSE   = 0x81; // Service -> Client 상태 응답
 
-// ── PipeCommand (Service -> Client) ──
-static const BYTE CMD_STATUS_RESPONSE = 0x81; // 상태 응답
+// 서비스 명령 코드
+static const BYTE CMD_NONE  = 0x00;
+static const BYTE CMD_START = 0x01;
+static const BYTE CMD_STOP  = 0x02;
 
-// ── ServiceStatusCode ──
-static const BYTE STATUS_ACTIVE   = 0x11; // 서비스 실행 중
-static const BYTE STATUS_INACTIVE = 0x12; // 서비스 중지됨
-static const BYTE STATUS_STARTING = 0x13; // 서비스 시작 중
-static const BYTE STATUS_STOPPING = 0x14; // 서비스 중지 중
-static const BYTE STATUS_ERROR = 0x15; // 서비스 오류 상태
 
 // 엔진 상태를 주기적으로 서비스에 보고하는 간격 (밀리초)
 static const DWORD REPORT_INTERVAL = 5000;
@@ -42,10 +39,10 @@ static const DWORD REPORT_INTERVAL = 5000;
 #pragma region Forward declaration
 
 static unsigned int StartIpcClient(HANDLE hReadyEvent, ENGINE_STATE* state);
-static HANDLE ConnectToPipe();
+static HANDLE ConnectToPipe(const wchar_t* pipeName);
 static int SendCommand(HANDLE hPipe, BYTE command);
 static int ReadResponse(HANDLE hPipe, BYTE* outCommand, std::vector<BYTE>& outPayload);
-static int QueryServiceStatus(HANDLE hPipe, BYTE* outStatus);
+static int QueryServiceStatus(ENGINE_STATE* state, HANDLE hPipe, BYTE* outStatus);
 
 #pragma endregion
 
@@ -70,10 +67,10 @@ static void StopIpcClient(HANDLE hPipe, ENGINE_STATE* state)
     state->ipcClientRunning = false;
 }
 
-static HANDLE ConnectToPipe()
+static HANDLE ConnectToPipe(const wchar_t* pipeName)
 {
 	// 첫 번째 시도: 파이프에 즉시 연결 시도
-    HANDLE hPipe = CreateFileW(PIPE_NAME, GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_EXISTING, 0, NULL);
+    HANDLE hPipe = CreateFileW(pipeName, GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_EXISTING, 0, NULL);
 
     // 연결 성공 시 즉시 반환
     if (hPipe != INVALID_HANDLE_VALUE)
@@ -194,11 +191,10 @@ static int ReadResponse(HANDLE hPipe, BYTE* outCommand, std::vector<BYTE>& outPa
     return 0;
 }
 
-
-static int QueryServiceStatus(HANDLE hPipe, BYTE* outStatus)
+static int QueryServiceStatus(ENGINE_STATE* state, HANDLE hPipe, BYTE* outStatus)
 {
     // 상태 조회 명령 전송
-    if (SendCommand(hPipe, CMD_QUERY_STATUS) != 0)
+    if (SendCommand(hPipe, state->status) != 0)
         return 1;
 
     // 서버 응답 수신
@@ -208,13 +204,6 @@ static int QueryServiceStatus(HANDLE hPipe, BYTE* outStatus)
     if (ReadResponse(hPipe, &responseCommand, payload) != 0)
         return 1;
 
-    // 명령 코드가 StatusResponse(0x81)인지 확인
-    if (responseCommand != CMD_STATUS_RESPONSE)
-    {
-        spdlog::error("[IpcClient] QueryServiceStatus: 예상과 다른 응답 명령 (0x{:02X})", responseCommand);
-        return 1;
-    }
-
     // 페이로드가 최소 1바이트 이상인지 확인
     // PipeMessage.Status()는 항상 1바이트 페이로드를 포함함
     if (payload.empty())
@@ -223,7 +212,12 @@ static int QueryServiceStatus(HANDLE hPipe, BYTE* outStatus)
         return 1;
     }
 
-    // 페이로드의 첫 바이트가 ServiceStatusCode
+    // 명령 코드가 StatusResponse(0x81)인지 확인
+    if (payload[0] == CMD_NONE)
+        return 0;
+    
+    spdlog::info("[IpcClient] QueryServiceStatus: 명령 수신 (0x{:02X})", responseCommand);
+    
     *outStatus = payload[0];
     return 0;
 }
@@ -238,12 +232,10 @@ static const char* StatusCodeToString(BYTE status)
 {
     switch (status)
     {
-    case STATUS_ACTIVE:   return "Active";
-    case STATUS_INACTIVE: return "Inactive";
-    case STATUS_STARTING: return "Starting";
-    case STATUS_STOPPING: return "Stopping";
-    case CMD_STATUS_RESPONSE: return "Live";
-    default:              return "Unknown";
+        case CMD_NONE:  return "Live";
+        case CMD_START: return "START";
+        case CMD_STOP:  return "STOP";
+        default:        return "Unknown";
     }
 }
 
@@ -270,8 +262,11 @@ static const char* StatusCodeToString(BYTE status)
 // ──────────────────────────────────────────────────────────────────────
 static unsigned int StartIpcClient(HANDLE hReadyEvent, ENGINE_STATE* state)
 {
+	// 파이프 경로 생성: "\\.\pipe\{pipeName}"
+    std::wstring pipePath = L"\\\\.\\pipe\\" + std::wstring(state->config.pipeName.begin(), state->config.pipeName.end());
+
     // IpsaeService의 Named Pipe 서버에 연결 시도
-    HANDLE hPipe = ConnectToPipe();
+    HANDLE hPipe = ConnectToPipe(pipePath.c_str());
 
     // 연결 실패해도 스레드는 시작 → 메인 루프에서 재연결을 시도
     // (서비스가 아직 시작되지 않았을 수 있으므로 여기서 종료하지 않음)
@@ -292,12 +287,12 @@ static unsigned int StartIpcClient(HANDLE hReadyEvent, ENGINE_STATE* state)
 
     // ── 메인 루프 ──
     // 엔진이 STOPPING/STOPPED/ERROR 상태가 될 때까지 반복
-    while (state->status != ENGINE_STOPPING &&
-           state->status != ENGINE_STOPPED &&
-           state->status != ENGINE_ERROR)
+    while (state->status != STATUS_STOPPING &&
+           state->status != STATUS_INACTIVE &&
+           state->status != STATUS_ERROR)
     {
         // ── 엔진 대기 상태 처리 ──
-        // ENGINE_WAITING 상태이면 상태가 바뀔 때까지 블로킹 대기
+        // STATUS_WAITING 상태이면 상태가 바뀔 때까지 블로킹 대기
         // 타임아웃(60초) 초과 시 false 반환 → 루프 탈출
         if (!WaitForEngineWaiting(state, "IpcClient"))
             break;
@@ -306,7 +301,7 @@ static unsigned int StartIpcClient(HANDLE hReadyEvent, ENGINE_STATE* state)
         // 서비스가 재시작되었거나, 이전 연결이 끊긴 경우 여기서 복구
         if (hPipe == INVALID_HANDLE_VALUE)
         {
-            hPipe = ConnectToPipe();
+            hPipe = ConnectToPipe(pipePath.c_str());
             if (hPipe == INVALID_HANDLE_VALUE)
             {
                 // 연결 실패 → 다음 주기에 다시 시도
@@ -316,9 +311,9 @@ static unsigned int StartIpcClient(HANDLE hReadyEvent, ENGINE_STATE* state)
             spdlog::info("[IpcClient] 파이프 재연결 성공");
         }
 
-        // ── 서비스 상태 질의 ──
-        BYTE serviceStatus = 0;
-        if (QueryServiceStatus(hPipe, &serviceStatus) != 0)
+        // ── 엔진 상태 전송 ──
+        BYTE payload = 0;
+        if (QueryServiceStatus(state, hPipe, &payload) != 0)
         {
             // 통신 실패 → 파이프 연결이 끊긴 것으로 간주
             // 핸들을 닫고 다음 루프에서 재연결 시도
@@ -330,13 +325,12 @@ static unsigned int StartIpcClient(HANDLE hReadyEvent, ENGINE_STATE* state)
             continue;
         }
 
+		// 서비스 상태 업데이트
+		IpcReceiveHandle(state, payload);
+        
         // 서비스 상태 로그 출력
-        spdlog::debug("[IpcClient] 서비스 상태: {}", StatusCodeToString(serviceStatus));
+        spdlog::debug("[IpcClient] 서비스 상태: {}", StatusCodeToString(payload));
 
-        // ── 다음 질의까지 대기 ──
-        // REPORT_INTERVAL(5초)마다 서비스 상태를 확인
-        // Sleep 중에는 엔진 상태 변화를 감지하지 못하므로
-        // 긴급 종료가 필요하면 WaitForEngineWaiting에서 처리됨
         Sleep(REPORT_INTERVAL);
     }
 
@@ -344,6 +338,23 @@ static unsigned int StartIpcClient(HANDLE hReadyEvent, ENGINE_STATE* state)
     spdlog::info("[IpcClient] IPC 모듈 종료");
     StopIpcClient(hPipe, state);
     return 0;
+}
+
+static unsigned int IpcReceiveHandle(ENGINE_STATE* state, BYTE payload)
+{
+    switch (payload)
+    {
+        case CMD_START:
+            spdlog::info("[IpcClient] START 명령 수신");
+            return 0;
+        case CMD_STOP:
+            spdlog::info("[IpcClient] STOP 명령 수신");
+			state->status = STATUS_STOPPING; // 플래그 변경 시 엔진 자체 종료 루틴이 작동하여 모든 모듈이 순차적으로 종료
+			return 0;
+        default:
+            spdlog::warn("[IpcClient] 알 수 없는 명령 수신: 0x{:02X}", payload);
+            return 1;
+    }
 }
 
 #pragma endregion

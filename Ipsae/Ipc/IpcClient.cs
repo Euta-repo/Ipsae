@@ -1,6 +1,8 @@
 using System.IO;
 using System.IO.Pipes;
+using System.Windows.Threading;
 using IpsaeShared;
+using Serilog;
 
 namespace Ipsae.Ipc;
 
@@ -11,12 +13,35 @@ public class IpcClient
 
     private IpcClient() { }
 
+    public void StartServiceWorker()
+    {
+        Task.Run(async () =>
+        {
+            while (true)
+            {
+                var status = await SendCommandAsync(PipeCommand.QueryStatus);
+                if (status == null)
+                {
+                    Log.Warning("Failed to get service status");
+                }
+                else if (status != ServiceState.Instance.Status)
+                {
+                    Dispatcher.CurrentDispatcher.Invoke(() => ServiceState.Instance.Status = status.Value);
+                    Log.Information("Service status updated: {Status}", status.Value);
+                }
+
+                await Task.Delay(1000);
+            }
+        });
+    }
+
+
     public async Task<ServiceStatusCode?> SendCommandAsync(PipeCommand command, int timeoutMs = 3000)
     {
         try
         {
             // 클라이언트 스트림을 생성, 타임아웃이 발생하면 예외가 발생하도록 cts 토큰 설정
-            await using var client = new NamedPipeClientStream(".", PipeProtocol.EnginePipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
+            await using var client = new NamedPipeClientStream(".", PipeProtocol.ClientPipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
             using var cts = new CancellationTokenSource(timeoutMs);
 
             // 클라이언트 연결을 비동기로 시도하고, 타임아웃이 발생하면 예외가 발생하도록 설정
@@ -35,10 +60,12 @@ public class IpcClient
                 return response.GetStatusCode();
             }
 
+            Log.Warning("Received invalid response for command {Command}", command);
             return null;
         }
-        catch
+        catch(Exception ex)
         {
+            Log.Warning(ex, "Failed to send command {Command} to service", command);
             return null;
         }
     }

@@ -4,13 +4,13 @@
 
 enum ENGINE_STATUS
 {
-	ENGINE_INIT,		// 초기화 단계 (다시 사용하지 않음)
-	ENGINE_STARTING,	// 시작 단계
-	ENGINE_RUNNING,		// 실행 중
-	ENGINE_STOPPING,	// 중지 단계
-	ENGINE_STOPPED,		// 중지 완료
-	ENGINE_ERROR,
-	ENGINE_WAITING		// 대기 단계
+	STATUS_INIT		= 0x10,		// 초기화 단계 (다시 사용하지 않음)
+	STATUS_ACTIVE	= 0x11,		// 실행 중
+	STATUS_INACTIVE	= 0x12,		// 중지 완료
+	STATUS_STARTING = 0x13,	// 시작 단계
+	STATUS_STOPPING = 0x14,	// 중지 단계
+	STATUS_ERROR	= 0x15,
+	STATUS_WAITING	= 0x16		// 대기 단계
 };
 
 struct ENGINE_CONFIG
@@ -22,12 +22,13 @@ struct ENGINE_CONFIG
 	std::string dbPath;
 	std::string iniPath;
 	std::string pipeName;
+	std::string logPath;
 };
 
 struct ENGINE_STATE
 {
 	// 엔진 전체 상태
-	ENGINE_STATUS status = ENGINE_INIT;
+	ENGINE_STATUS status = STATUS_INIT;
 	ENGINE_CONFIG config;
 
 	// 각 모듈의 실행 상태 플래그
@@ -166,7 +167,7 @@ struct ThreadSafeQueue
 // Common functions
 // =============================================================================================
 
-void InitializeLogger();
+void InitializeLogger(std::string logPath);
 
 bool WaitForEngineWaiting(ENGINE_STATE* state, const char* caller);
 
@@ -174,4 +175,6 @@ void IpToStr(UINT32 ip, char* buf, size_t bufLen);
 
 UINT32 StrToIp(const char* str);
 
-std::string iniInterfaceParser(const std::string iniPath);
+std::string GetConfigValues(const std::string iniPath);
+
+void ParseArguments(int argc, wchar_t* argv[], ENGINE_STATE& state);

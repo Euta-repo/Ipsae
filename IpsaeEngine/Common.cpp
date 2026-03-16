@@ -12,15 +12,17 @@
 /// <summary>
 /// 로거를 초기화하고 콘솔 및 파일 출력을 설정합니다.
 /// </summary>
-void InitializeLogger()
+void InitializeLogger(std::string logPath)
 {
-	CreateDirectoryA("C:\\Ipsae\\logs", NULL);
-	std::string logPath = "C:\\Ipsae\\logs\\ipsae.log";
+	std::string dirPath = logPath.substr(0, logPath.find_last_of("\\/"));
+	std::string filename = logPath.substr(logPath.find_last_of("\\/") + 1);
+
+	CreateDirectoryA(dirPath.c_str(), NULL);
 
 	auto console_sink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
 	auto file_sink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>(logPath, 1024 * 1024 * 5, 3);
 
-	auto logger = std::make_shared<spdlog::logger>("ipsae", spdlog::sinks_init_list{ console_sink, file_sink });
+	auto logger = std::make_shared<spdlog::logger>(filename, spdlog::sinks_init_list{ console_sink, file_sink });
 	logger->set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%^%l%$] %v");
 	logger->set_level(spdlog::level::trace);
 
@@ -36,17 +38,17 @@ void InitializeLogger()
 /// <returns>대기 해제 시 true, 타임아웃 시 false (ENGINE_ERROR로 전환됨)</returns>
 bool WaitForEngineWaiting(ENGINE_STATE* state, const char* caller)
 {
-	if (state->status != ENGINE_WAITING)
+	if (state->status != STATUS_WAITING)
 		return true;
 
 	DWORD64 waitStart = GetTickCount64();
 
-	while (state->status == ENGINE_WAITING)
+	while (state->status == STATUS_WAITING)
 	{
 		if (GetTickCount64() - waitStart > TIMEOUT_WAITING)
 		{
 			spdlog::warn("[{}] Waiting 상태 지연으로 작업을 중단합니다.", caller);
-			state->status = ENGINE_ERROR;
+			state->status = STATUS_ERROR;
 			return false;
 		}
 		Sleep(100);
@@ -82,7 +84,7 @@ UINT32 StrToIp(const char* str)
 /// <summary>
 /// INI 파일에서 네트워크 인터페이스 이름을 읽어옵니다.
 /// </summary>
-std::string iniInterfaceParser(const std::string iniPath)
+std::string GetConfigValues(const std::string iniPath)
 {
 	char interfaceOutput[256] = {};
 
@@ -90,9 +92,45 @@ std::string iniInterfaceParser(const std::string iniPath)
 
 	if (interfaceOutput[0] == '\0')
 	{
-		MessageBoxA(NULL, "Failed to load interface from config.ini", "오류", MB_OK | MB_ICONERROR);
+		spdlog::error("[Common] Failed to load interface from config.ini");
 		return "";
 	}
 
 	return interfaceOutput;
+}
+
+
+/// <summary>
+/// 커맨드라인 파라미터를 파싱하여 ENGINE_STATE에 저장합니다.
+/// 사용법: IpsaeEngine.exe --db "경로" --ini "경로" --pipe "파이프명"
+/// </summary>
+void ParseArguments(int argc, wchar_t* argv[], ENGINE_STATE& state)
+{
+	for (int i = 1; i < argc; i++)
+	{
+		if (wcscmp(argv[i], L"--db") == 0 && i + 1 < argc)
+		{
+			char buf[MAX_PATH];
+			WideCharToMultiByte(CP_UTF8, 0, argv[++i], -1, buf, MAX_PATH, NULL, NULL);
+			state.config.dbPath = buf;
+		}
+		else if (wcscmp(argv[i], L"--ini") == 0 && i + 1 < argc)
+		{
+			char buf[MAX_PATH];
+			WideCharToMultiByte(CP_UTF8, 0, argv[++i], -1, buf, MAX_PATH, NULL, NULL);
+			state.config.iniPath = buf;
+		}
+		else if (wcscmp(argv[i], L"--pipe") == 0 && i + 1 < argc)
+		{
+			char buf[256];
+			WideCharToMultiByte(CP_UTF8, 0, argv[++i], -1, buf, 256, NULL, NULL);
+			state.config.pipeName = buf;
+		}
+		else if (wcscmp(argv[i], L"--log") == 0 && i + 1 < argc)
+		{
+			char buf[256];
+			WideCharToMultiByte(CP_UTF8, 0, argv[++i], -1, buf, 256, NULL, NULL);
+			state.config.logPath = buf;
+		}
+	}
 }

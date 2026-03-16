@@ -23,7 +23,9 @@ std::unordered_set<UINT32> hosts;
 #pragma region Forward declaration
 
 unsigned int StartInspector(HANDLE hReadyEvent, ENGINE_STATE* state);
+
 void getPID(const MIB_TCPTABLE_OWNER_PID* curTable, const UINT32 ip, UINT32* curPID);
+
 void getProcessTree(DB_INSERT_DATA* dbData, const UINT32 targetPID);
 
 #pragma endregion
@@ -39,30 +41,13 @@ void EnqueueInspect(const std::unordered_set<UINT32>& data)
 unsigned int __stdcall StartInspectorThread(void* param)
 {
 	THREAD_CONTEXT* context = (THREAD_CONTEXT*)param;
-	// 이 함수는 Inspector 스레드의 진입점입니다.
-	// inspectQueue에서 데이터를 대기하고 처리하는 로직을 구현해야 합니다.
-	// 예시:
-	/*
-	std::unordered_set<UINT32> data;
-	while (inspectQueue.WaitAndPop(data))
-	{
-		// 데이터 처리 로직
-		// 예: DB에서 위협 호스트 목록과 비교하여 로그 생성
-	}
-	*/
+
 	return StartInspector(context->hReadyEvent, context->state);
 }
 
 #pragma endregion
 
 #pragma region Static functions
-
-/*
-*	GetExtendedTcpTable() - MIB_TCPTABLE_OWNER_PID, bufsize; dwOwningPid
-*	OpenProcess()
-*	QueryFullProcessImageName() - ProcessImageFileName for NtQueryInformationProcess()
-*	NtQueryInformationProcess() - InheritedFromUniqueProcessId
-*/
 
 static unsigned int StartInspector(HANDLE hReadyEvent, ENGINE_STATE* state)
 {
@@ -141,14 +126,6 @@ static unsigned int StartInspector(HANDLE hReadyEvent, ENGINE_STATE* state)
 				// Process 정보 탐색 - PID로 프로세스 트리 탐색 후 DB_INSERT_DATA 구조체에 저장
 				getProcessTree(&dbData, targetPID);
 	
-				// Network 정보는 IP만 채우기
-				// Process 정보는 최대한 많이 채우되, PID/PPID 위주로
-				/*struct DB_INSERT_DATA
-				{
-					NETWORK_LOG network;
-					std::vector<PROCESS_LOG> processes;
-				};*/
-
 				// 메모리 해제
 				free(tcpTable);
 				tcpTable = NULL;
@@ -225,37 +202,6 @@ void getProcessTree(DB_INSERT_DATA* dbData, const UINT32 targetPID) {
 
 	CloseHandle(hProcess); // 프로세스 핸들 닫기
 }
-
-/*
-/// 재귀적으로 PPID 가져오는 함수 작성
-void getPPID(DWORD pid, std::vector <DWORD> & ppidList) {
-
-	PROCESS_LOG ppidLog; // PPID 로그 저장용 구조체
-	ULONG pbufSize = 0; // NtQueryInformationProcess 함수에서 필요한 버퍼 크기 저장용 변수
-	SYSTEM_BASICPROCESS_INFORMATION pbi; // 프로세스 정보 저장용 구조체
-
-	auto hProcess = OpenProcess(PROCESS_QUERY_INFORMATION, FALSE, pid);
-
-	NtQueryInformationProcess(hProcess, ProcessBasicInformation, NULL, 0, &pbufSize); // 필요한 버퍼 크기 가져오기
-	NtQueryInformationProcess(hProcess, ProcessBasicInformation, &pbi, pbufSize, NULL); // 프로세스 정보 가져오기
-	
-	// 현재 프로세스의 PPID 가져오기
-	ppidLog.ppid = (DWORD)pbi.InheritedFromUniqueProcessId;
-
-	if (ppidLog.ppid == 0) {
-		CloseHandle(hProcess);
-		return; // PPID가 0인 경우 종료
-	}
-
-	ppidList.push_back(ppidLog.ppid);
-
-	getPPID(ppidLog.ppid, ppidList);
-
-	// 
-	// ppidList에 추가
-	// PPID가 0이 아니면 재귀적으로 호출하여 부모 프로세스 트리 탐색
-}
-*/
 
 #pragma endregion
 

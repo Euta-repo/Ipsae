@@ -264,12 +264,12 @@ static int BatchInsertLog(sqlite3* db, DB_INSERT_BATCH& data)
 static unsigned int StartDbInsert(HANDLE hReadyEvent, ENGINE_STATE* state)
 {
     sqlite3* db = NULL;
-
+	std::string dbPath = std::string(state->config.dbPath.begin(), state->config.dbPath.end());
     std::unordered_set<UINT32> threat_hosts;
     DB_INSERT_BATCH data;
 
     // DB Open
-    int rc = sqlite3_open("C:\\Ipsae\\Config\\ipsaedb.db", &db);
+    int rc = sqlite3_open(dbPath.c_str(), &db);
     if (rc != SQLITE_OK)
     {
         spdlog::error("[DbInsert] sqlite3_open: {}", sqlite3_errmsg(db));
@@ -309,7 +309,7 @@ static unsigned int StartDbInsert(HANDLE hReadyEvent, ENGINE_STATE* state)
             break;
 
 		// 엔진 오류 상태 처리
-        if (state->status == ENGINE_ERROR)
+        if (state->status == STATUS_ERROR)
         {
             spdlog::error("[DbInsert] 엔진이 강제 종료됩니다.");
             break;
@@ -324,14 +324,14 @@ static unsigned int StartDbInsert(HANDLE hReadyEvent, ENGINE_STATE* state)
         }
 
         // 엔진 중지 상태 처리
-        if (state->status == ENGINE_STOPPED || state->status == ENGINE_STOPPING)
+        if (state->status == STATUS_INACTIVE || state->status == STATUS_STOPPING)
         {
             break;
         }
     }
 
     // 엔진 중지 상태에서 대기 중인 로그 배치 삽입 처리
-    if (state->status == ENGINE_STOPPING || state->status == ENGINE_STOPPED)
+    if (state->status == STATUS_STOPPING || state->status == STATUS_INACTIVE)
     {
         s_dbInsertQueue.Stop();
         DWORD64 startTime = GetTickCount64();

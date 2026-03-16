@@ -7,63 +7,37 @@
 
 #define THREAD_COUNT 4
 
-/// <summary>
-/// 커맨드라인 파라미터를 파싱하여 ENGINE_STATE에 저장한다.
-/// 사용법: IpsaeEngine.exe --db "경로" --ini "경로" --pipe "파이프명"
-/// </summary>
-static void ParseArguments(int argc, wchar_t* argv[], ENGINE_STATE& state)
-{
-    for (int i = 1; i < argc; i++)
-    {
-        if (wcscmp(argv[i], L"--db") == 0 && i + 1 < argc)
-        {
-            char buf[MAX_PATH];
-            WideCharToMultiByte(CP_UTF8, 0, argv[++i], -1, buf, MAX_PATH, NULL, NULL);
-            state.config.dbPath = buf;
-        }
-        else if (wcscmp(argv[i], L"--ini") == 0 && i + 1 < argc)
-        {
-            char buf[MAX_PATH];
-            WideCharToMultiByte(CP_UTF8, 0, argv[++i], -1, buf, MAX_PATH, NULL, NULL);
-            state.config.iniPath = buf;
-        }
-        else if (wcscmp(argv[i], L"--pipe") == 0 && i + 1 < argc)
-        {
-            char buf[256];
-            WideCharToMultiByte(CP_UTF8, 0, argv[++i], -1, buf, 256, NULL, NULL);
-            state.config.pipeName = buf;
-        }
-    }
-}
-
 int wmain(int argc, wchar_t* argv[])
 {
-    SetConsoleOutputCP(CP_UTF8);
-
     /* ============================== */
     // 1. Initialize
     /* ============================== */
-    InitializeLogger();
-
     ENGINE_STATE state;
-    state.status = ENGINE_INIT;
+    state.status = STATUS_INIT;
 
+    SetConsoleOutputCP(CP_UTF8);
     ParseArguments(argc, argv, state);
 
+    state.status = STATUS_STARTING;
+
+    /* ============================== */
+    // 2. Config Load
+    /* ============================== */
     // 파라미터가 없으면 기본값 사용
+    if (state.config.logPath.empty())  state.config.logPath  = "C:\\Ipsae\\logs\\ipsaeEngine.log";
     if (state.config.dbPath.empty())   state.config.dbPath   = "C:\\Ipsae\\Config\\ipsaedb.db";
     if (state.config.iniPath.empty())  state.config.iniPath  = "C:\\Ipsae\\Config\\config.ini";
     if (state.config.pipeName.empty()) state.config.pipeName = "IpsaeEngine";
 
+    InitializeLogger(state.config.logPath);
+
+	state.config.interfaceName = GetConfigValues(state.config.iniPath);
+
+	// 로드된 설정값 로그 출력
     spdlog::info("[main] DB:   {}", state.config.dbPath);
     spdlog::info("[main] INI:  {}", state.config.iniPath);
     spdlog::info("[main] Pipe: {}", state.config.pipeName);
-    
-	state.config.interfaceName = iniInterfaceParser(state.config.iniPath);
-
-    /* ============================== */
-    // 2. Flag 초기화 작성
-    /* ============================== */
+    spdlog::info("[main] Interface: {}", state.config.interfaceName);
 
     /* ============================== */
     // 3. Thread 생성 및 초기화
@@ -124,6 +98,21 @@ int wmain(int argc, wchar_t* argv[])
         Sleep(100);
     }
 
+    // 전체 상태 검사
+    if (state.dbInsertRunning == true &&
+        state.inspectorRunning == true && 
+        state.ipcClientRunning == true && 
+        state.packetCaptureRunning == true)
+    {
+        state.status = STATUS_ACTIVE;
+        spdlog::info("[main] Engine이 활성화되었습니다.");
+    }
+    else
+    {
+        spdlog::error("[main] Thread 초기화 실패: 일부 모듈이 준비되지 않았습니다.");
+        state.status = STATUS_ERROR;
+	}
+
     // 모든 Thread 종료 대기
     WaitForMultipleObjects(THREAD_COUNT, hThreads, TRUE, INFINITE);
 
@@ -131,7 +120,8 @@ int wmain(int argc, wchar_t* argv[])
     // 4. 정리 및 종료
     /* ============================== */
 
-    for (int i = 0; i < THREAD_COUNT; i++)
+
+	for (int i = 1; i < THREAD_COUNT; i++) // 첫 번째 스레드는 IpcClient이므로 마지막에 종료되도록 대기
     {
         if (hThreads[i])
             CloseHandle(hThreads[i]);

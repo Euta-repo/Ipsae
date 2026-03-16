@@ -19,6 +19,15 @@ public class PipeMessage
         };
     }
 
+    public static PipeMessage EngineCommand(EngineCommandCode command)
+    {
+        return new PipeMessage
+        {
+            Command = PipeCommand.EngineCommand,
+            Payload = [(byte)command]
+        };
+    }
+
     public static PipeMessage FromCommand(PipeCommand command)
     {
         return new PipeMessage { Command = command };
@@ -27,6 +36,11 @@ public class PipeMessage
     public ServiceStatusCode GetStatusCode()
     {
         return Payload.Length > 0 ? (ServiceStatusCode)Payload[0] : ServiceStatusCode.Inactive;
+    }
+
+    public EngineCommandCode GetEngineCommandCode()
+    {
+        return Payload.Length > 0 ? (EngineCommandCode)Payload[0] : EngineCommandCode.None;
     }
 
     public byte[] ToBytes()
