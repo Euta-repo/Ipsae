@@ -41,6 +41,9 @@ public class Worker : BackgroundService
     #endregion
 
     #region Client Pipe Server
+
+    private const int ClientReadTimeoutMs = 3000;
+
     private async Task PipeServerLoop(CancellationToken ct)
     {
         while (!ct.IsCancellationRequested)
@@ -58,6 +61,34 @@ public class Worker : BackgroundService
                 _logger.LogInformation("Client connected");
 
                 await HandleClientAsync(server, ct);
+
+                // 클라이언트 연결 종료 후 3초 내에 재접속하지 않으면 엔진 종료
+                if (_status == ServiceStatusCode.Active)
+                {
+                    using var reconnectCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                    reconnectCts.CancelAfter(ClientReadTimeoutMs);
+
+                    try
+                    {
+                        await using var waitServer = new NamedPipeServerStream(
+                            PipeProtocol.ClientPipeName,
+                            PipeDirection.InOut,
+                            NamedPipeServerStream.MaxAllowedServerInstances,
+                            PipeTransmissionMode.Byte,
+                            PipeOptions.Asynchronous);
+
+                        await waitServer.WaitForConnectionAsync(reconnectCts.Token);
+                        _logger.LogInformation("Client reconnected");
+
+                        await HandleClientAsync(waitServer, ct);
+                    }
+                    catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+                    {
+                        _logger.LogWarning("Client reconnect timeout ({Seconds}s). Stopping engine.", ClientReadTimeoutMs / 1000);
+                        _pendingEngineCommand = EngineCommandCode.Stop;
+                        StartStopTimeout();
+                    }
+                }
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
