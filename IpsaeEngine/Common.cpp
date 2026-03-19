@@ -12,15 +12,15 @@
 /// <summary>
 /// 로거를 초기화하고 콘솔 및 파일 출력을 설정합니다.
 /// </summary>
-void InitializeLogger(std::string logPath)
+void InitializeLogger(std::string logDir)
 {
+	CreateDirectoryA(logDir.c_str(), NULL);
+
 	auto now = spdlog::details::os::localtime();
 	char timeBuf[32];
 	strftime(timeBuf, sizeof(timeBuf), "%Y%m%d_%H%M%S", &now);
 	std::string filename = fmt::format("ipsae-engine-{}.log", timeBuf);
-	std::string dirPath = logPath.substr(0, logPath.find_last_of("\\/"));
-
-	CreateDirectoryA(dirPath.c_str(), NULL);
+	std::string logPath = logDir + "\\" + filename;
 
 	auto console_sink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
 	auto file_sink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>(logPath, 1024 * 1024 * 5, 3);

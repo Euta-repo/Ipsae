@@ -168,7 +168,7 @@ struct ThreadSafeQueue
 // Common functions
 // =============================================================================================
 
-void InitializeLogger(std::string logPath);
+void InitializeLogger(std::string logDir);
 
 bool WaitForEngineWaiting(ENGINE_STATE* state, const char* caller);
 

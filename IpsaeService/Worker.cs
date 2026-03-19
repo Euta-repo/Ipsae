@@ -300,7 +300,7 @@ public class Worker : BackgroundService
                 process = Process.Start(new ProcessStartInfo
                 {
                     FileName = IpsaePaths.EnginePath,
-                    Arguments = $"--db \"{IpsaePaths.DbPath}\" --ini \"{IpsaePaths.IniPath}\" --pipe \"{PipeProtocol.EnginePipeName}\" --log \"{IpsaePaths.EngineLogPath}\"",
+                    Arguments = $"--db \"{IpsaePaths.DbPath}\" --ini \"{IpsaePaths.IniPath}\" --pipe \"{PipeProtocol.EnginePipeName}\" --log \"{IpsaePaths.LogDir}\"",
                     UseShellExecute = false,
                     CreateNoWindow = true,
                 });

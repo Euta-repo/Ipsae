@@ -24,7 +24,7 @@ int wmain(int argc, wchar_t* argv[])
     // 2. Config Load
     /* ============================== */
     // 파라미터가 없으면 기본값 사용
-    if (state.config.logPath.empty())  state.config.logPath  = "C:\\Ipsae\\logs\\ipsaeEngine.log";
+    if (state.config.logPath.empty())  state.config.logPath  = "C:\\Ipsae\\logs";
     if (state.config.dbPath.empty())   state.config.dbPath   = "C:\\Ipsae\\Config\\ipsaedb.db";
     if (state.config.iniPath.empty())  state.config.iniPath  = "C:\\Ipsae\\Config\\config.ini";
     if (state.config.pipeName.empty()) state.config.pipeName = "IpsaeEngine";
@@ -155,7 +155,7 @@ SYSEND:
         Sleep(1000);
 	}
 
-    if (hThreads[0]) // IpcClient 스레드 종료 대기
+    if (hThreads[0] != NULL) // IpcClient 스레드 종료 대기
 		CloseHandle(hThreads[0]);
 
     spdlog::info("[main] Engine 종료");
