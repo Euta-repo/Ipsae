@@ -14,8 +14,11 @@
 /// </summary>
 void InitializeLogger(std::string logPath)
 {
+	auto now = spdlog::details::os::localtime();
+	char timeBuf[32];
+	strftime(timeBuf, sizeof(timeBuf), "%Y%m%d_%H%M%S", &now);
+	std::string filename = fmt::format("ipsae-engine-{}.log", timeBuf);
 	std::string dirPath = logPath.substr(0, logPath.find_last_of("\\/"));
-	std::string filename = logPath.substr(logPath.find_last_of("\\/") + 1);
 
 	CreateDirectoryA(dirPath.c_str(), NULL);
 
@@ -133,4 +136,17 @@ void ParseArguments(int argc, wchar_t* argv[], ENGINE_STATE& state)
 			state.config.logPath = buf;
 		}
 	}
+}
+
+
+/// <summary>
+/// 엔진이 중지 상태인지 확인합니다. STATUS_STOPPING 또는 STATUS_ERROR인 경우 true를 반환합니다.
+/// </summary>
+/// <param name="state">엔진 상태를 가져오는 state 입니다.</param>
+/// <returns>중지 상태이면 true, 그렇지 않으면 false</returns>
+bool CheckEngineStopping(ENGINE_STATE* state)
+{
+	if (state->status == STATUS_STOPPING || state->status == STATUS_ERROR)
+		return true;
+	return false;
 }

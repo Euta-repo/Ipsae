@@ -22,8 +22,7 @@ static const int MAX_PAYLOAD_SIZE = 1024 * 64;
 static const int HEADER_SIZE = 5;
 
 // 추가 명령 코드 (Extend Command)
-static const BYTE CMD_QUERY_STATUS      = 0x01; // Client -> Service 상태 조회
-static const BYTE CMD_STATUS_RESPONSE   = 0x81; // Service -> Client 상태 응답
+static const BYTE CMD_STATUS_RESPONSE   = 0x82; // Service -> Client 상태 응답
 
 // 서비스 명령 코드
 static const BYTE CMD_NONE  = 0x00;
@@ -32,7 +31,7 @@ static const BYTE CMD_STOP  = 0x02;
 
 
 // 엔진 상태를 주기적으로 서비스에 보고하는 간격 (밀리초)
-static const DWORD REPORT_INTERVAL = 5000;
+static const DWORD REPORT_INTERVAL = 1000;
 
 #pragma endregion
 
@@ -43,6 +42,7 @@ static HANDLE ConnectToPipe(const wchar_t* pipeName);
 static int SendCommand(HANDLE hPipe, BYTE command);
 static int ReadResponse(HANDLE hPipe, BYTE* outCommand, std::vector<BYTE>& outPayload);
 static int QueryServiceStatus(ENGINE_STATE* state, HANDLE hPipe, BYTE* outStatus);
+static unsigned int HandleIpcReceive(ENGINE_STATE* state, BYTE payload);
 
 #pragma endregion
 
@@ -84,7 +84,7 @@ static HANDLE ConnectToPipe(const wchar_t* pipeName)
         return INVALID_HANDLE_VALUE;
     }
 
-    return hPipe;
+    return INVALID_HANDLE_VALUE;
 }
 
 static int SendCommand(HANDLE hPipe, BYTE command)
@@ -216,9 +216,9 @@ static int QueryServiceStatus(ENGINE_STATE* state, HANDLE hPipe, BYTE* outStatus
     if (payload[0] == CMD_NONE)
         return 0;
     
-    spdlog::info("[IpcClient] QueryServiceStatus: 명령 수신 (0x{:02X})", responseCommand);
-    
+    spdlog::info("[IpcClient] QueryServiceStatus: 명령 수신 (0x{:02X})", payload[0]);
     *outStatus = payload[0];
+    
     return 0;
 }
 
@@ -287,10 +287,8 @@ static unsigned int StartIpcClient(HANDLE hReadyEvent, ENGINE_STATE* state)
 
     // ── 메인 루프 ──
     // 엔진이 STOPPING/STOPPED/ERROR 상태가 될 때까지 반복
-    while (state->status != STATUS_STOPPING &&
-           state->status != STATUS_INACTIVE &&
-           state->status != STATUS_ERROR)
-    {
+    while (true) {
+
         // ── 엔진 대기 상태 처리 ──
         // STATUS_WAITING 상태이면 상태가 바뀔 때까지 블로킹 대기
         // 타임아웃(60초) 초과 시 false 반환 → 루프 탈출
@@ -326,13 +324,26 @@ static unsigned int StartIpcClient(HANDLE hReadyEvent, ENGINE_STATE* state)
         }
 
 		// 서비스 상태 업데이트
-		IpcReceiveHandle(state, payload);
+        HandleIpcReceive(state, payload);
         
         // 서비스 상태 로그 출력
         spdlog::debug("[IpcClient] 서비스 상태: {}", StatusCodeToString(payload));
 
+        if (!state->packetCaptureRunning && 
+            !state->inspectorRunning && 
+            !state->dbInsertRunning &&
+            CheckEngineStopping(state))
+            break;
+
         Sleep(REPORT_INTERVAL);
     }
+
+	// 서비스에 엔진이 중지되었음을 알림 (서비스에서 STOP 명령을 보낸 경우)
+	BYTE finalPayload = 0;
+	std::vector<BYTE> emptyPayload;
+	state->status = STATUS_INACTIVE; // 루프 탈출 시 상태를 Inactive로 설정 (서비스에서 STOP 명령을 보낸 경우)
+    if (SendCommand(hPipe, state->status) == 0)
+	    ReadResponse(hPipe, &finalPayload, emptyPayload); // 서비스가 응답을 보내는 경우 읽어서 버퍼 비우기
 
     // ── 종료 처리 ──
     spdlog::info("[IpcClient] IPC 모듈 종료");
@@ -340,10 +351,11 @@ static unsigned int StartIpcClient(HANDLE hReadyEvent, ENGINE_STATE* state)
     return 0;
 }
 
-static unsigned int IpcReceiveHandle(ENGINE_STATE* state, BYTE payload)
+static unsigned int HandleIpcReceive(ENGINE_STATE* state, BYTE payload)
 {
     switch (payload)
     {
+        case CMD_NONE: return 0;
         case CMD_START:
             spdlog::info("[IpcClient] START 명령 수신");
             return 0;

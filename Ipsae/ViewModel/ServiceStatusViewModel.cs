@@ -136,6 +136,11 @@ public class ServiceStatusViewModel : ViewModelBase
         }
     }
 
+    public override void Cleanup()
+    {
+        ServiceState.Instance.PropertyChanged -= OnServiceStateChanged;
+    }
+
     private static string GetStatusMessage(ServiceStatusCode status) => status switch
     {
         ServiceStatusCode.Active => "잎새가 동작하고 있습니다.",

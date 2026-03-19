@@ -1,6 +1,6 @@
+﻿using IpsaeShared;
 using System.Diagnostics;
 using System.IO.Pipes;
-using IpsaeShared;
 
 namespace IpsaeService;
 
@@ -9,11 +9,12 @@ public class Worker : BackgroundService
     private readonly ILogger<Worker> _logger;
     private readonly object _lock = new();
 
-    private volatile ServiceStatusCode _status = ServiceStatusCode.Inactive;
-    private volatile EngineCommandCode _pendingEngineCommand = EngineCommandCode.None;
+    private ServiceStatusCode _status = ServiceStatusCode.Inactive;
+    private EngineCommandCode _pendingEngineCommand = EngineCommandCode.None;
 
-    private const string EnginePath = @"C:\Ipsae\IpsaeEngine\IpsaeEngine.exe";
     private Process? EngineProcess = null;
+    private int _engineRestartCount = 0;
+    private const int MaxEngineRestarts = 3;
 
     #region Main Loop
 
@@ -31,6 +32,8 @@ public class Worker : BackgroundService
         var pipeTask = PipeServerLoop(stoppingToken);
 
         await Task.WhenAll(engineTask, pipeTask);
+
+        StopEngineForce();
 
         _logger.LogInformation("IpsaeIDS Service stopped");
     }
@@ -102,12 +105,16 @@ public class Worker : BackgroundService
             case PipeCommand.StartService:
                 _logger.LogInformation("Start command received");
                 _pendingEngineCommand = EngineCommandCode.Start;
+                _status = ServiceStatusCode.Starting;
+                StopEngineForce();
                 Task.Run(StartEngine);
                 return PipeMessage.Status(ServiceStatusCode.Starting);
 
             case PipeCommand.StopService:
                 _logger.LogInformation("Stop command received");
                 _pendingEngineCommand = EngineCommandCode.Stop;
+                _status = ServiceStatusCode.Stopping;
+                StartStopTimeout();
                 return PipeMessage.Status(ServiceStatusCode.Stopping);
 
             default:
@@ -132,6 +139,7 @@ public class Worker : BackgroundService
 
                 await server.WaitForConnectionAsync(ct);
                 _logger.LogInformation("Engine connected");
+                _engineRestartCount = 0;
 
                 await HandleEngineAsync(server, ct);
             }
@@ -148,13 +156,41 @@ public class Worker : BackgroundService
 
     }
 
+    private const int EngineReadTimeoutMs = 3000;
+
     private async Task HandleEngineAsync(NamedPipeServerStream server, CancellationToken ct)
     {
         try
         {
             while (server.IsConnected && !ct.IsCancellationRequested)
             {
-                var message = await PipeMessage.ReadAsync(server, ct);
+                using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                timeoutCts.CancelAfter(EngineReadTimeoutMs);
+
+                PipeMessage? message;
+                try
+                {
+                    message = await PipeMessage.ReadAsync(server, timeoutCts.Token);
+                }
+                catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+                {
+                    _engineRestartCount++;
+                    _logger.LogWarning("Engine read timeout ({Seconds}s). Restart attempt {Count}/{Max}.",
+                        EngineReadTimeoutMs / 1000, _engineRestartCount, MaxEngineRestarts);
+
+                    StopEngineForce();
+
+                    if (_engineRestartCount >= MaxEngineRestarts)
+                    {
+                        _logger.LogError("Engine restart limit reached. Giving up.");
+                        _status = ServiceStatusCode.Error;
+                        break;
+                    }
+
+                    StartEngine();
+                    break; // EngineManagerLoop에서 새 파이프 연결을 대기
+                }
+
                 if (message == null) break;
 
                 var response = HandleEngineMessage(message);
@@ -174,57 +210,88 @@ public class Worker : BackgroundService
 
     private PipeMessage? HandleEngineMessage(PipeMessage message)
     {
+        ServiceStatusCode? status = null;
+        bool isReset = false;
+
         switch (message.Command)
         {
             case PipeCommand.QueryStatus:
-                return PipeMessage.Status(_status);
+                return ConsumeEngineCommand(ref _pendingEngineCommand, isReset);
 
             case PipeCommand.ActiveEngine:
                 _logger.LogInformation("Engine Active Received");
-                _status = ServiceStatusCode.Active;
-                return ConsumeEngineCommand();
+                status = ServiceStatusCode.Active;
+
+                break;
 
             case PipeCommand.InactiveEngine:
                 _logger.LogInformation("Engine Inactive Received");
-                _status = ServiceStatusCode.Inactive;
-                return ConsumeEngineCommand();
+                status = ServiceStatusCode.Inactive;
+                break;
 
             case PipeCommand.StartingEngine:
                 _logger.LogInformation("Engine Starting Received");
-                _status = ServiceStatusCode.Starting;
-                return ConsumeEngineCommand();
+                status = ServiceStatusCode.Starting;
+                break;
 
             case PipeCommand.StoppingEngine:
                 _logger.LogInformation("Engine Stopping Received");
-                _status = ServiceStatusCode.Stopping;
-                return ConsumeEngineCommand();
+                status = ServiceStatusCode.Stopping;
+                break;
 
             case PipeCommand.ErrorEngine:
                 _logger.LogInformation("Engine Error Received");
-                _status = ServiceStatusCode.Error;
-                return ConsumeEngineCommand();
+                status = ServiceStatusCode.Error;
+                break;
 
             default:
                 return null;
         }
+        if (ShouldUpdateStatus(_pendingEngineCommand, status))
+        {
+            isReset = _pendingEngineCommand != EngineCommandCode.None ? true : false;
+            _status = status ?? _status;
+            _logger.LogInformation("Service status updated: {Status}", _status);
+        }  
+
+        return ConsumeEngineCommand(ref _pendingEngineCommand, isReset);
     }
 
-    private PipeMessage ConsumeEngineCommand()
+    private PipeMessage ConsumeEngineCommand(ref EngineCommandCode cmd, bool isReset)
     {
-        var cmd = _pendingEngineCommand;
-        _pendingEngineCommand = EngineCommandCode.None;
-        return PipeMessage.EngineCommand(cmd);
+        lock (_lock)
+        {
+            var result = PipeMessage.EngineCommand(cmd);
+            cmd = isReset ? EngineCommandCode.None : cmd;
+            return result;
+        }
     }
 
     #endregion
 
     #region Common Functions
+
+    private const int StopTimeoutMs = 30000;
+
+    private void StartStopTimeout()
+    {
+        Task.Run(async () =>
+        {
+            await Task.Delay(StopTimeoutMs);
+            if (_status == ServiceStatusCode.Stopping)
+            {
+                _logger.LogWarning("Engine stop timeout ({Seconds}s). Force killing engine.", StopTimeoutMs / 1000);
+                StopEngineForce();
+            }
+        });
+    }
+
     private int StartEngine()
     {
         Process? process;
         try
         {
-            _logger.LogInformation("Starting engine: {Path}", EnginePath);
+            _logger.LogInformation("Starting engine: {Path}", IpsaePaths.EnginePath);
 
             lock (_lock)
             {
@@ -232,7 +299,7 @@ public class Worker : BackgroundService
 
                 process = Process.Start(new ProcessStartInfo
                 {
-                    FileName = EnginePath,
+                    FileName = IpsaePaths.EnginePath,
                     Arguments = $"--db \"{IpsaePaths.DbPath}\" --ini \"{IpsaePaths.IniPath}\" --pipe \"{PipeProtocol.EnginePipeName}\" --log \"{IpsaePaths.EngineLogPath}\"",
                     UseShellExecute = false,
                     CreateNoWindow = true,
@@ -258,39 +325,73 @@ public class Worker : BackgroundService
         }
     }
 
-    private void StopEngine()
+    private void StopEngineForce()
     {
-        Process? process = EngineProcess;
+        _status = ServiceStatusCode.Stopping;
 
-        if (process == null || process.HasExited)
-            return;
-
+        // 1. 관리 중인 프로세스 종료
         try
         {
-            _logger.LogInformation("Stopping engine (PID: {Pid})", process.Id);
-
-            lock (_lock)
+            var process = EngineProcess;
+            if (process != null && !process.HasExited)
             {
-                _status = ServiceStatusCode.Stopping;
-
-                if (!process.HasExited)
-                {
-                    process.Kill(entireProcessTree: true);
-                    process.WaitForExit(5000);
-                }
-
-                process.Dispose();
-
-                _status = ServiceStatusCode.Inactive;
+                _logger.LogInformation("Stopping engine (PID: {Pid})", process.Id);
+                process.Kill(entireProcessTree: true);
+                process.WaitForExit(5000);
             }
-
-            _logger.LogInformation("Engine stopped");
+            process?.Dispose();
+            EngineProcess = null;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error stopping engine");
-            _status = ServiceStatusCode.Inactive;
+            _logger.LogError(ex, "Error stopping managed engine process");
         }
+
+        // 2. PC에서 모든 IpsaeEngine.exe 프로세스 종료
+        var engineName = Path.GetFileNameWithoutExtension(IpsaePaths.EngineFileName);
+        try
+        {
+            foreach (var proc in Process.GetProcessesByName(engineName))
+            {
+                try
+                {
+                    _logger.LogWarning("Killing orphan engine process (PID: {Pid})", proc.Id);
+                    proc.Kill(entireProcessTree: true);
+                    proc.WaitForExit(5000);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Failed to kill engine process (PID: {Pid})", proc.Id);
+                }
+                finally
+                {
+                    proc.Dispose();
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error enumerating engine processes");
+        }
+
+        _status = ServiceStatusCode.Inactive;
+        _logger.LogInformation("Engine stopped");
+    }
+
+    private bool ShouldUpdateStatus(EngineCommandCode cmd, ServiceStatusCode? newStatus)
+    {
+        return (cmd, newStatus) switch
+        {
+            (EngineCommandCode.Stop, ServiceStatusCode.Stopping) => true,
+            (EngineCommandCode.Stop, ServiceStatusCode.Inactive) => true,
+            (EngineCommandCode.Stop, ServiceStatusCode.Error) => true,
+            (EngineCommandCode.Stop, _) => false,
+            (EngineCommandCode.Start, ServiceStatusCode.Starting) => true,
+            (EngineCommandCode.Start, ServiceStatusCode.Error) => true,
+            (EngineCommandCode.Start, ServiceStatusCode.Active) => true,
+            (EngineCommandCode.Start, _) => false,
+            _ => true,
+        };
     }
     #endregion
 }

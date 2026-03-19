@@ -264,7 +264,7 @@ static int BatchInsertLog(sqlite3* db, DB_INSERT_BATCH& data)
 static unsigned int StartDbInsert(HANDLE hReadyEvent, ENGINE_STATE* state)
 {
     sqlite3* db = NULL;
-	std::string dbPath = std::string(state->config.dbPath.begin(), state->config.dbPath.end());
+	std::string dbPath = std::string(state->config.dbPath.c_str());
     std::unordered_set<UINT32> threat_hosts;
     DB_INSERT_BATCH data;
 
@@ -324,33 +324,27 @@ static unsigned int StartDbInsert(HANDLE hReadyEvent, ENGINE_STATE* state)
         }
 
         // 엔진 중지 상태 처리
-        if (state->status == STATUS_INACTIVE || state->status == STATUS_STOPPING)
+        if (CheckEngineStopping(state) && state->inspectorRunning == false)
+            break;
+    }
+
+    s_dbInsertQueue.Stop();
+    DWORD64 startTime = GetTickCount64();
+
+    while (s_dbInsertQueue.TryPop(data))
+    {
+        if (GetTickCount64() - startTime > TIMEOUT_STOPPING)
         {
+            spdlog::warn("[DbInsert] 대기 시간 초과로 로그 배치 삽입을 중단합니다. 남은 큐 크기: {}", s_dbInsertQueue.Size());
             break;
         }
-    }
-
-    // 엔진 중지 상태에서 대기 중인 로그 배치 삽입 처리
-    if (state->status == STATUS_STOPPING || state->status == STATUS_INACTIVE)
-    {
-        s_dbInsertQueue.Stop();
-        DWORD64 startTime = GetTickCount64();
-
-        while (s_dbInsertQueue.TryPop(data))
+        if (BatchInsertLog(db, data) > 0)
         {
-            if (GetTickCount64() - startTime > TIMEOUT_STOPPING)
-            {
-                spdlog::warn("[DbInsert] 대기 시간 초과로 로그 배치 삽입을 중단합니다. 남은 큐 크기: {}", s_dbInsertQueue.Size());
-                break;
-            }
-            if (BatchInsertLog(db, data) > 0)
-            {
-                spdlog::error("[DbInsert] 로그 배치 삽입 실패");
-                continue;
-            }
+            spdlog::error("[DbInsert] 로그 배치 삽입 실패");
+            continue;
         }
-        spdlog::info("[DbInsert] 로그 배치 삽입 스레드 정상 종료");
     }
+    spdlog::info("[DbInsert] 로그 배치 삽입 스레드 정상 종료");
 
     // DB Close 및 종료
 	StopDbInsert(db, state);

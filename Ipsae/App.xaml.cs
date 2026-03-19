@@ -29,7 +29,7 @@ public partial class App : Application
         Log.Logger = new LoggerConfiguration()
             .MinimumLevel.Debug()
             .WriteTo.Console()
-            .WriteTo.File(Path.Combine(IpsaePaths.LogDir, "ipsae-ui.log"),
+            .WriteTo.File(Path.Combine(IpsaePaths.LogDir, "ipsae-ids-.log"),
                 rollingInterval: RollingInterval.Day,
                 fileSizeLimitBytes: 5 * 1024 * 1024,
                 retainedFileCountLimit: 3)
@@ -72,6 +72,8 @@ public partial class App : Application
 
     protected override void OnExit(ExitEventArgs e)
     {
+        IpcClient.Instance.Stop();
+
         Log.Information("Ipsae UI exiting");
         Log.CloseAndFlush();
 

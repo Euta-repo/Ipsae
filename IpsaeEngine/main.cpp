@@ -64,7 +64,9 @@ int wmain(int argc, wchar_t* argv[])
             spdlog::error("[FAIL][main] CreateEventW: error {}", GetLastError());
             for (int j = 0; j < i; j++)
                 CloseHandle(threadContexts[j].hReadyEvent);
-            return 1;
+
+			state.status = STATUS_ERROR;
+            break;
         }
 
         // Thread 생성
@@ -78,7 +80,9 @@ int wmain(int argc, wchar_t* argv[])
                 CloseHandle(threadContexts[j].hReadyEvent);
             for (int j = 0; j < i; j++)
                 CloseHandle(hThreads[j]);
-            return 1;
+            
+			state.status = STATUS_ERROR;
+			break;
         }
 
         // Thread 준비될 때까지 대기 (최대 10초)
@@ -91,27 +95,45 @@ int wmain(int argc, wchar_t* argv[])
             spdlog::error("[FAIL][main] WaitForSingleObject: error {}", GetLastError());
             for (int j = 0; j < i; j++)
                 CloseHandle(hThreads[j]);
-            return 1;
-        }
 
-        // 잠시 대기
-        Sleep(100);
+            state.status = STATUS_ERROR;
+            break;
+        }
     }
+
+    // 잠시 대기
+    Sleep(500);
 
     // 전체 상태 검사
-    if (state.dbInsertRunning == true &&
-        state.inspectorRunning == true && 
-        state.ipcClientRunning == true && 
-        state.packetCaptureRunning == true)
+    int failCount = 0;
+    while(state.dbInsertRunning == false || state.inspectorRunning == false || 
+        state.ipcClientRunning == false || state.packetCaptureRunning == false)
     {
-        state.status = STATUS_ACTIVE;
-        spdlog::info("[main] Engine이 활성화되었습니다.");
+        if (state.status == STATUS_ERROR)
+        {
+            spdlog::error("[main] Thread 초기화 실패: 일부 모듈이 오류 상태입니다.");
+            break;
+		}
+
+        if (failCount > 3)
+        {
+            spdlog::warn("[main] Thread 초기화 실패: 실패 횟수가 중첩되어 엔진을 종료합니다.");
+            state.status = STATUS_ERROR;
+            break;
+        }
+
+        spdlog::warn("[main] Thread 초기화 실패: 일부 모듈이 준비되지 않았습니다.");
+        failCount++;
+        Sleep(1000);
     }
-    else
-    {
-        spdlog::error("[main] Thread 초기화 실패: 일부 모듈이 준비되지 않았습니다.");
-        state.status = STATUS_ERROR;
-	}
+
+	// 초기화 실패 시 엔진 종료
+    if (state.status == STATUS_ERROR)
+		goto SYSEND;
+
+	// 모든 모듈이 준비되었으므로 엔진 활성화
+	state.status = STATUS_ACTIVE;
+    spdlog::info("[main] Engine이 활성화되었습니다.");
 
     // 모든 Thread 종료 대기
     WaitForMultipleObjects(THREAD_COUNT, hThreads, TRUE, INFINITE);
@@ -120,12 +142,21 @@ int wmain(int argc, wchar_t* argv[])
     // 4. 정리 및 종료
     /* ============================== */
 
-
+SYSEND:
 	for (int i = 1; i < THREAD_COUNT; i++) // 첫 번째 스레드는 IpcClient이므로 마지막에 종료되도록 대기
     {
         if (hThreads[i])
             CloseHandle(hThreads[i]);
     }
+
+    while (state.ipcClientRunning) // IpcClient이 먼저 종료되지 않았으면 대기
+    {
+        spdlog::warn("[main] IPC 모듈이 아직 종료되지 않았습니다. 대기 중...");
+        Sleep(1000);
+	}
+
+    if (hThreads[0]) // IpcClient 스레드 종료 대기
+		CloseHandle(hThreads[0]);
 
     spdlog::info("[main] Engine 종료");
     return 0;

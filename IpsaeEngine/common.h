@@ -115,15 +115,16 @@ struct ThreadSafeQueue
 	/// </summary>
 	/// <param name="out">큐에서 꺼낸 요소를 저장할 참조 변수.</param>
 	/// <returns>요소를 성공적으로 꺼냈으면 true, 큐가 중지되고 비어있으면 false를 반환합니다.</returns>
-	bool WaitAndPop(T& out)
+	bool WaitAndPop(T& out, int timeoutMs = 1000)
 	{
 		// 대기 중인 스레드가 큐에 요소가 추가되거나 큐가 중지될 때까지 대기합니다.
 		std::unique_lock<std::mutex> lock(mutex);
 		// 큐가 비어있고 중지되지 않은 경우에만 대기합니다.
-		cv.wait(lock, [this] { return !queue.empty() || stopped; });
-
-		if (stopped && queue.empty())
-			return false;
+		cv.wait_for(lock, std::chrono::milliseconds(timeoutMs),
+			[this] { return !queue.empty() || stopped; });
+		
+		if (queue.empty())
+			return true;
 
 		out = queue.front();
 		queue.pop();
@@ -178,3 +179,5 @@ UINT32 StrToIp(const char* str);
 std::string GetConfigValues(const std::string iniPath);
 
 void ParseArguments(int argc, wchar_t* argv[], ENGINE_STATE& state);
+
+bool CheckEngineStopping(ENGINE_STATE* state);

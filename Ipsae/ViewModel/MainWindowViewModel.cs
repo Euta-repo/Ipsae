@@ -59,6 +59,7 @@ public class MainWindowViewModel : ViewModelBase, INavigationService
         get => _currentPageViewModel;
         set
         {
+            _currentPageViewModel?.Cleanup();
             if (SetProperty(ref _currentPageViewModel, value))
             {
                 IsHomeVisible = value == null;

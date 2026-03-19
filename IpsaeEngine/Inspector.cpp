@@ -11,11 +11,13 @@
 #pragma comment(lib, "Iphlpapi.lib") // IP Helper API 라이브러리 링크
 #pragma comment(lib, "ws2_32.lib") // Windows Sockets API 라이브러리 링크
 
+//TODO: 엔진 중지 시 Queue에 남은 데이터 모두 처리 후 Thread 종료하도록 수정 필요 (현재는 Thread가 먼저 종료되어 데이터 유실 가능성 존재)
+//TODO: STATUS_WAITING 상태에서 대기하도록 수정 필요 (현재는 대기 상태를 고려하지 않고 바로 처리)
+
 #pragma region Variables
 
 static ThreadSafeQueue<std::unordered_set<UINT32>> inspectQueue;
 static std::unordered_set<UINT32> threatHosts;
-
 std::unordered_set<UINT32> hosts;
 
 #pragma endregion
@@ -23,9 +25,7 @@ std::unordered_set<UINT32> hosts;
 #pragma region Forward declaration
 
 unsigned int StartInspector(HANDLE hReadyEvent, ENGINE_STATE* state);
-
 void getPID(const MIB_TCPTABLE_OWNER_PID* curTable, const UINT32 ip, UINT32* curPID);
-
 void getProcessTree(DB_INSERT_DATA* dbData, const UINT32 targetPID);
 
 #pragma endregion
@@ -69,7 +69,7 @@ static unsigned int StartInspector(HANDLE hReadyEvent, ENGINE_STATE* state)
 	 
 	// While 문 진입 - Queue 에서 데이터 가져오기
 	while (inspectQueue.WaitAndPop(hosts)) {
-		
+
 		// While 문 진입 - set에서 데이터 1개씩 가져오기
 		for (UINT32 ip : hosts) {
 
@@ -140,7 +140,19 @@ static unsigned int StartInspector(HANDLE hReadyEvent, ENGINE_STATE* state)
 
 		// Batch 초기화
 		batch.clear();
+
+		// 종료 코드 추가했당 - 20260316 Kiyeon
+		if (CheckEngineStopping(state) && state->packetCaptureRunning == false) 
+		{
+			spdlog::info("[Inspector] PacketCapture 종료가 확인되어 Inspector 중지합니다.");
+			break;
+		}
 	}
+
+
+	// 여기도 - 20260316 Kiyeon
+	spdlog::info("[Inspector] Inspector 스레드 정상 종료");
+	state->inspectorRunning = false;
 
 	return 0;
 }

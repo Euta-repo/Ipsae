@@ -9,8 +9,6 @@
 
 #define PACKET_BUFSIZE  0xFFFF // 최대 패킷 크기 (65535 바이트)
 
-static std::atomic<bool> s_running{ false };
-
 static HANDLE s_handle = INVALID_HANDLE_VALUE;
 
 #pragma endregion
@@ -32,7 +30,6 @@ unsigned int __stdcall StartPacketCaptureThread(void* param)
 
 void StopPacketCapture(const char* caller)
 {
-    s_running = false;
     if (s_handle != INVALID_HANDLE_VALUE)
     {
 		WinDivertShutdown(s_handle, WINDIVERT_SHUTDOWN_RECV);
@@ -53,7 +50,6 @@ static void StopRunning(ENGINE_STATE* state)
     }
 
 	// 패킷 캡처 상태 플래그 업데이트
-    s_running = false;
     state->packetCaptureRunning = false;
 }
 
@@ -93,7 +89,6 @@ static unsigned int StartPacketCapture(HANDLE hReadyEvent, ENGINE_STATE* state)
     std::unordered_set<UINT32> batchSet;
     DWORD64 lastFlushTime = 0;
 
-    s_running = true;
 	// WinDivert 필터 - 아웃바운드 TCP ACK, UDP, ICMP 패킷 중 사설 IP 대역이 아닌 패킷만 캡처
     const char* filter =
         "outbound and ((tcp and tcp.Ack) or udp or icmp) "
@@ -143,7 +138,7 @@ static unsigned int StartPacketCapture(HANDLE hReadyEvent, ENGINE_STATE* state)
     UINT recvLen = 0;
     lastFlushTime = GetTickCount64(); // 배치 타이머
 
-    while (s_running)
+    while (state->packetCaptureRunning)
     {
         // 엔진 대기 상태 처리
         if (!WaitForEngineWaiting(state, "PacketCapture"))
@@ -155,7 +150,6 @@ static unsigned int StartPacketCapture(HANDLE hReadyEvent, ENGINE_STATE* state)
 		// 패킷 수신 및 엔진 오류 상태 처리
 		int batchResult = BatchPacketCapture(s_handle, packet.get(), &recvLen, &addr, batchSet);
         if (batchResult == 1) {
-            if (!s_running) break;
             spdlog::error("[PacketCapture] WinDivertRecv: error {}", GetLastError());
 			break;
         } else if (batchResult == 2) {
@@ -176,6 +170,9 @@ static unsigned int StartPacketCapture(HANDLE hReadyEvent, ENGINE_STATE* state)
             batchSet.clear();
             lastFlushTime = now;
 		}
+
+        if (CheckEngineStopping(state))
+            break;
     }
 
 	// 종료 시 남은 배치가 있으면 큐에 추가
@@ -186,6 +183,7 @@ static unsigned int StartPacketCapture(HANDLE hReadyEvent, ENGINE_STATE* state)
 	}
 
 	// 패킷 캡처 종료
+    spdlog::info("[PacketCapture] 패킷 캡처 스레드 정상 종료");
 	StopRunning(state);
     return 0;
 }

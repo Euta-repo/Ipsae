@@ -10,6 +10,10 @@ public static class IpsaePaths
     public const string IniPath = @"C:\Ipsae\Config\config.ini";
     public const string EngineLogPath = @"C:\Ipsae\logs\ipsaeEngine.log";
 
+    public const string EngineFileName = "IpsaeEngine.exe";
+    public const string EngineDir = @"C:\Ipsae\IpsaeEngine";
+    public const string EnginePath = @"C:\Ipsae\IpsaeEngine\IpsaeEngine.exe";
+
     public static void Initialize()
     {
         try

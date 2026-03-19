@@ -6,7 +6,7 @@ internal class Program
 {
     private static async Task Main(string[] args)
     {
-        var logPath = Path.Combine(IpsaePaths.LogDir, "ipsae-service.log");
+        var logPath = Path.Combine(IpsaePaths.LogDir, "ipsae-service-.log");
 
         Log.Logger = new LoggerConfiguration()
             .MinimumLevel.Information()
