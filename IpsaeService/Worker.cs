@@ -90,11 +90,13 @@ public class Worker : BackgroundService
                     }
                 }
             }
+            // CancellationToken이 취소된 경우 루프 종료
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
                 _logger.LogWarning("Client manager loop cancellation requested");
                 break;
             }
+            // 그 외 예외는 로그만 남기고 루프 계속
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Client pipe error");
