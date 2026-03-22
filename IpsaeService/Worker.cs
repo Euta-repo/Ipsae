@@ -16,6 +16,10 @@ public class Worker : BackgroundService
     private int _engineRestartCount = 0;
     private const int MaxEngineRestarts = 3;
 
+    private const int EngineReadTimeoutMs = 30000;
+    private const int ClientReadTimeoutMs = 30000;
+    private const int StopTimeoutMs = 30000;
+
     #region Main Loop
 
     public Worker(ILogger<Worker> logger)
@@ -42,7 +46,6 @@ public class Worker : BackgroundService
 
     #region Client Pipe Server
 
-    private const int ClientReadTimeoutMs = 3000;
 
     private async Task PipeServerLoop(CancellationToken ct)
     {
@@ -189,8 +192,6 @@ public class Worker : BackgroundService
 
     }
 
-    private const int EngineReadTimeoutMs = 3000;
-
     private async Task HandleEngineAsync(NamedPipeServerStream server, CancellationToken ct)
     {
         try
@@ -304,7 +305,6 @@ public class Worker : BackgroundService
 
     #region Common Functions
 
-    private const int StopTimeoutMs = 30000;
 
     private void StartStopTimeout()
     {
