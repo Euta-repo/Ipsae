@@ -32,10 +32,9 @@ void getProcessTree(DB_INSERT_DATA* dbData, const UINT32 targetPID);
 
 #pragma region Functions
 
-void EnqueueInspect(const std::unordered_set<UINT32>& data)
+void EnqueueInspect(std::unordered_set<UINT32>&& data)
 {
-	// 이 함수는 PacketCapture 스레드에서 캡처된 네트워크 로그의 IP 주소 집합을 Inspector 스레드로 전달하는 역할을 합니다.
-	inspectQueue.Push(data);
+	inspectQueue.Push(std::move(data));
 }
 
 unsigned int __stdcall StartInspectorThread(void* param)

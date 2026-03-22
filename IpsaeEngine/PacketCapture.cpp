@@ -10,6 +10,8 @@
 #define PACKET_BUFSIZE  0xFFFF // 최대 패킷 크기 (65535 바이트)
 
 static HANDLE s_handle = INVALID_HANDLE_VALUE;
+static std::unordered_set<std::string> s_debugExcludeIps;
+#define debug_exclude(ip) s_debugExcludeIps.insert(ip)
 
 #pragma endregion
 
@@ -72,6 +74,10 @@ static int BatchPacketCapture(HANDLE handle, unsigned char* packet, UINT* recvLe
 
 		// 원격 호스트 IP 주소 추출 및 배치에 추가
         UINT32 remoteHost = addr->Outbound ? ipHdr->DstAddr : ipHdr->SrcAddr;
+        char ipStr[16];
+        IpToStr(remoteHost, ipStr, sizeof(ipStr));
+        if (s_debugExcludeIps.find(ipStr) == s_debugExcludeIps.end())
+            spdlog::debug("[PacketCapture] Captured: {}", ipStr);
         batch.insert(remoteHost);
     }
     catch (const std::exception& ex)
@@ -89,9 +95,9 @@ static unsigned int StartPacketCapture(HANDLE hReadyEvent, ENGINE_STATE* state)
     std::unordered_set<UINT32> batchSet;
     DWORD64 lastFlushTime = 0;
 
-	// WinDivert 필터 - 아웃바운드 TCP ACK, UDP, ICMP 패킷 중 사설 IP 대역이 아닌 패킷만 캡처
+	// WinDivert 필터 - 아웃바운드 TCP, UDP, ICMP 패킷 중 사설 IP 대역이 아닌 패킷만 캡처
     const char* filter =
-        "outbound and ((tcp and tcp.Ack) or udp or icmp) "
+        "outbound and (tcp or udp or icmp) "
         "and (ip.DstAddr < 10.0.0.0 or ip.DstAddr > 10.255.255.255) "
         "and (ip.DstAddr < 172.16.0.0 or ip.DstAddr > 172.31.255.255) "
         "and (ip.DstAddr < 192.168.0.0 or ip.DstAddr > 192.168.255.255) ";
@@ -133,6 +139,10 @@ static unsigned int StartPacketCapture(HANDLE hReadyEvent, ENGINE_STATE* state)
 
     spdlog::info("[PacketCapture] 패킷 캡처 시작");
 
+	// 디버그 로그 제외 IP 등록
+	debug_exclude("182.213.91.170");
+	debug_exclude("127.0.0.1");
+
 	// 패킷 캡처 루프
     WINDIVERT_ADDRESS addr;
     UINT recvLen = 0;
@@ -150,6 +160,8 @@ static unsigned int StartPacketCapture(HANDLE hReadyEvent, ENGINE_STATE* state)
 		// 패킷 수신 및 엔진 오류 상태 처리
 		int batchResult = BatchPacketCapture(s_handle, packet.get(), &recvLen, &addr, batchSet);
         if (batchResult == 1) {
+            if (CheckEngineStopping(state))
+                break; // 정상 종료 (WinDivertShutdown에 의한 종료)
             spdlog::error("[PacketCapture] WinDivertRecv: error {}", GetLastError());
 			break;
         } else if (batchResult == 2) {
@@ -167,7 +179,7 @@ static unsigned int StartPacketCapture(HANDLE hReadyEvent, ENGINE_STATE* state)
         if (now - lastFlushTime > 1000 && !batchSet.empty())
         {
             EnqueueInspect(std::move(batchSet));
-            batchSet.clear();
+            batchSet = {};
             lastFlushTime = now;
 		}
 
@@ -179,7 +191,6 @@ static unsigned int StartPacketCapture(HANDLE hReadyEvent, ENGINE_STATE* state)
     if (!batchSet.empty())  
     {
         EnqueueInspect(std::move(batchSet));
-        batchSet.clear();
 	}
 
 	// 패킷 캡처 종료

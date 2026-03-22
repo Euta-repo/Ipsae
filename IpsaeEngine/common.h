@@ -94,6 +94,16 @@ struct ThreadSafeQueue
 		cv.notify_one();
 	}
 
+	void Push(T&& item)
+	{
+		{
+			std::lock_guard<std::mutex> lock(mutex);
+			if (stopped) return;
+			queue.push(std::move(item));
+		}
+		cv.notify_one();
+	}
+
 	/// <summary>
 	/// 큐에서 요소를 제거하고 반환을 시도합니다.
 	/// </summary>
