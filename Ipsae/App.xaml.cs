@@ -1,9 +1,10 @@
-using System.IO;
-using System.Windows;
 using Ipsae.Ipc;
+using Ipsae.View;
 using Ipsae.ViewModel;
 using IpsaeShared;
 using Serilog;
+using System.IO;
+using System.Windows;
 
 namespace Ipsae;
 
@@ -11,6 +12,7 @@ public partial class App : Application
 {
     private static INavigationService? _navigationService;
     private static IpcClient _ipc = IpcClient.Instance;
+    private TrayIcon? _trayIcon;
 
     public static INavigationService NavigationService
     {
@@ -68,10 +70,28 @@ public partial class App : Application
         {
             MessageBox.Show("데이터베이스 초기화에 실패했습니다.", "DB 오류", MessageBoxButton.OK, MessageBoxImage.Error);
         }
+
+        var mainWindow = new MainWindow();
+        _trayIcon = new TrayIcon(mainWindow);
+        mainWindow.Closing += (s, e) => { e.Cancel = true; mainWindow.Hide(); };
+        //mainWindow.Show();
     }
 
     protected override void OnExit(ExitEventArgs e)
     {
+        try
+        {
+            foreach (var process in System.Diagnostics.Process.GetProcessesByName("IpsaeEngine"))
+            {
+                process.Kill();
+                process.WaitForExit(5000);
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "엔진 프로세스 종료 실패");
+        }
+
         IpcClient.Instance.Stop();
 
         Log.Information("Ipsae UI exiting");
