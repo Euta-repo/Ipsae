@@ -65,7 +65,7 @@ static unsigned int StartInspector(HANDLE hReadyEvent, ENGINE_STATE* state)
 	// Main 에게 Thread 가 준비되었음을 알림
 	state->inspectorRunning = true;
 	SetEvent(hReadyEvent);
-
+	 
 	// While 문 진입 - Queue 에서 데이터 가져오기
 	while (inspectQueue.WaitAndPop(hosts)) {
 
@@ -101,10 +101,10 @@ static unsigned int StartInspector(HANDLE hReadyEvent, ENGINE_STATE* state)
 					spdlog::error("[Inspector] malloc failed: {} bytes", tableSize);
 					continue;
 				}
-
+				
 				// TCP 연결 정보 가져오기 - tcpTable에 저장
-				errCheck = GetExtendedTcpTable(tcpTable, &tableSize, FALSE, AF_INET, TCP_TABLE_OWNER_PID_ALL, 0);
-				if (errCheck != NO_ERROR)
+				errCheck = GetExtendedTcpTable(tcpTable, &tableSize, TRUE, AF_INET, TCP_TABLE_OWNER_PID_ALL, 0);
+				if (errCheck != NO_ERROR) 
 				{
 					spdlog::error("[Inspector] GetExtendedTcpTable data query failed: {}", errCheck);
 					free(tcpTable);
@@ -113,7 +113,6 @@ static unsigned int StartInspector(HANDLE hReadyEvent, ENGINE_STATE* state)
 				}
 
 				// PID 찾기
-				targetPID = 0; // PID 초기화
 				getPID(tcpTable, ip, &targetPID);
 
 				// 예외 : PID가 0인 경우 (일치하는 IP가 없는 경우)
@@ -125,7 +124,7 @@ static unsigned int StartInspector(HANDLE hReadyEvent, ENGINE_STATE* state)
 
 				// Process 정보 탐색 - PID로 프로세스 트리 탐색 후 DB_INSERT_DATA 구조체에 저장
 				getProcessTree(&dbData, targetPID);
-
+	
 				// 메모리 해제
 				free(tcpTable);
 				tcpTable = NULL;
@@ -142,7 +141,7 @@ static unsigned int StartInspector(HANDLE hReadyEvent, ENGINE_STATE* state)
 		batch.clear();
 
 		// 종료 코드 추가했당 - 20260316 Kiyeon
-		if (CheckEngineStopping(state) && state->packetCaptureRunning == false)
+		if (CheckEngineStopping(state) && state->packetCaptureRunning == false) 
 		{
 			spdlog::info("[Inspector] PacketCapture 종료가 확인되어 Inspector 중지합니다.");
 			break;
@@ -162,7 +161,7 @@ void getPID(const MIB_TCPTABLE_OWNER_PID* curTable, const UINT32 ip, UINT32* cur
 	UINT32 check;
 	for (UINT32 i = 0; i < curTable->dwNumEntries; i++) {
 		check = ntohl(curTable->table[i].dwRemoteAddr); // ntohl 함수를 사용하여 네트워크 바이트 순서에서 호스트 바이트 순서로 변환
-		if (check == ip) {
+		if (check == ip) { 
 			*curPID = curTable->table[i].dwOwningPid;
 			return;
 		}
@@ -176,12 +175,12 @@ void getProcessTree(DB_INSERT_DATA* dbData, const UINT32 targetPID) {
 	HANDLE hProcess = NULL; // 프로세스 핸들 저장
 	SYSTEM_BASICPROCESS_INFORMATION pbi; // 프로세스 정보 저장용 구조체
 	char procName[MAX_PATH]; // 프로세스 이름 저장용 버퍼
-	ULONG pbufSize = MAX_PATH; // NtQueryInformationProcess 함수에서 필요한 버퍼 크기 저장용 변수
+	ULONG pbufSize = 0; // NtQueryInformationProcess 함수에서 필요한 버퍼 크기 저장용 변수
 	PROCESS_LOG procLog; // 프로세스 로그 저장용
 	//-----------------------------------------------------------
 
 	// PID로 프로세스 접근 통로 open 후 프로세스 핸들 저장
-	hProcess = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, targetPID);
+	hProcess = OpenProcess(PROCESS_QUERY_INFORMATION, FALSE, targetPID);
 
 	// 예외: 프로세스 핸들이 NULL인 경우 (프로세스 접근 실패)
 	if (hProcess == NULL) {
@@ -193,14 +192,13 @@ void getProcessTree(DB_INSERT_DATA* dbData, const UINT32 targetPID) {
 	QueryFullProcessImageNameA(hProcess, 0, procName, &pbufSize); // 프로세스 경로 가져오기
 	procLog.procPath = std::string(procName); // 프로세스 경로 저장
 
-	for (int i = pbufSize - 1; i >= 0; i--) { // 프로세스 이름 추출
+	for (int i = strlen(procName) - 1; i >= 0; i--) { // 프로세스 이름 추출
 		if (procName[i] == '\\') {
 			procLog.procName = std::string(&procName[i + 1]);
 			break;
 		}
 	}
 
-	pbufSize = MAX_PATH;
 	NtQueryInformationProcess(hProcess, ProcessBasicInformation, NULL, 0, &pbufSize); // 필요한 버퍼 크기 가져오기
 	NtQueryInformationProcess(hProcess, ProcessBasicInformation, &pbi, pbufSize, NULL); // 프로세스 정보 가져오기
 
