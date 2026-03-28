@@ -12,6 +12,7 @@ var tcpTargets = new (string Host, int Port)[]
     ("142.250.207.14", 443), // google.com
     ("104.16.132.229", 80),  // cloudflare.com
     ("20.200.245.247", 443), // microsoft.com
+    ("165.22.170.131", 80)
 };
 
 var udpTargets = new (string Host, int Port)[]

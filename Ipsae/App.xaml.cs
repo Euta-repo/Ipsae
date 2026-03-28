@@ -71,6 +71,13 @@ public partial class App : Application
             MessageBox.Show("데이터베이스 초기화에 실패했습니다.", "DB 오류", MessageBoxButton.OK, MessageBoxImage.Error);
         }
 
+        // 6. Threat feed update
+        _ = Task.Run(async () =>
+        {
+            var importer = new ThreatFeedImporter();
+            await importer.RunAsync();
+        });
+
         var mainWindow = new MainWindow();
         _trayIcon = new TrayIcon(mainWindow);
         mainWindow.Closing += (s, e) => { e.Cancel = true; mainWindow.Hide(); };
