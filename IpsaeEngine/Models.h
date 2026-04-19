@@ -48,8 +48,8 @@ struct PROCESS_LOG
     std::string procName;
     std::string procPath;
     std::string procUser;
-    int procCreate;     // timestamp
-    int timestamp;
+    UINT32 procCreate;     // timestamp
+    UINT32 timestamp;
 };
 
 // =============================================================================================

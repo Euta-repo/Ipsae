@@ -13,6 +13,9 @@ static HANDLE s_handle = INVALID_HANDLE_VALUE;
 static std::unordered_set<std::string> s_debugExcludeIps;
 #define debug_exclude(ip) s_debugExcludeIps.insert(ip)
 
+int flag = 0;
+UINT32 srcPort = 0;
+
 #pragma endregion
 
 #pragma region Forward declaration
@@ -65,12 +68,22 @@ static int BatchPacketCapture(HANDLE handle, unsigned char* packet, UINT* recvLe
 
 		// IP 헤더 파싱
         PWINDIVERT_IPHDR ipHdr = NULL;
+        PWINDIVERT_TCPHDR tcpHdr = NULL;
+        PWINDIVERT_UDPHDR udpHdr = NULL;
+
         WinDivertHelperParsePacket(
             packet, *recvLen,
             &ipHdr, NULL, NULL, NULL, NULL,
-            NULL, NULL, NULL, NULL, NULL, NULL);
+            &tcpHdr, &udpHdr, NULL, NULL, NULL, NULL);
 
         if (ipHdr == NULL) return 2;
+
+        if (tcpHdr != NULL) flag = 6;
+        else if (udpHdr != NULL) {
+            flag = 17;
+            srcPort = udpHdr->SrcPort;
+        }
+        else flag = 0;
 
 		// 원격 호스트 IP 주소 추출 및 배치에 추가
         UINT32 remoteHost = addr->Outbound ? ipHdr->DstAddr : ipHdr->SrcAddr;
@@ -197,6 +210,14 @@ static unsigned int StartPacketCapture(HANDLE hReadyEvent, ENGINE_STATE* state)
     spdlog::info("[PacketCapture] 패킷 캡처 스레드 정상 종료");
 	StopRunning(state);
     return 0;
+}
+
+int getProtocol() {
+    return flag;
+}
+
+UINT32 getSrcPort() {
+    return srcPort;
 }
 
 #pragma endregion
