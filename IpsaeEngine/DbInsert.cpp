@@ -189,12 +189,12 @@ static int BatchInsertLog(sqlite3* db, DB_INSERT_BATCH& data)
         // SQL 바인딩
         sqlite3_bind_int(stmtNetwork, 1, net.direction);
         sqlite3_bind_int(stmtNetwork, 2, net.protocol);
-        sqlite3_bind_int(stmtNetwork, 3, net.remoteIp);
+        sqlite3_bind_int64(stmtNetwork, 3, (UINT64)net.remoteIp);
         sqlite3_bind_int(stmtNetwork, 4, net.remotePort);
         sqlite3_bind_int(stmtNetwork, 5, net.localPort);
         sqlite3_bind_int(stmtNetwork, 6, net.length);
         sqlite3_bind_int(stmtNetwork, 7, net.isThreat);
-        sqlite3_bind_int(stmtNetwork, 8, net.timestamp);
+        sqlite3_bind_int64(stmtNetwork, 8, net.timestamp);
 
         // SQL 실행
         if (sqlite3_step(stmtNetwork) != SQLITE_DONE)
@@ -228,8 +228,8 @@ static int BatchInsertLog(sqlite3* db, DB_INSERT_BATCH& data)
             sqlite3_bind_text(stmtProcess, 4, item.processes[i].procName.c_str(), -1, SQLITE_STATIC);
             sqlite3_bind_text(stmtProcess, 5, item.processes[i].procPath.c_str(), -1, SQLITE_STATIC);
             sqlite3_bind_text(stmtProcess, 6, item.processes[i].procUser.c_str(), -1, SQLITE_STATIC);
-            sqlite3_bind_int(stmtProcess, 7, item.processes[i].procCreate);
-            sqlite3_bind_int(stmtProcess, 8, item.processes[i].timestamp);
+            sqlite3_bind_int64(stmtProcess, 7, item.processes[i].procCreate);
+            sqlite3_bind_int64(stmtProcess, 8, item.processes[i].timestamp);
 
             // SQL 실행
             if (sqlite3_step(stmtProcess) != SQLITE_DONE)

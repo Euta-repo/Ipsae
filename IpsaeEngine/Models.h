@@ -13,8 +13,8 @@ struct THREAT_HOST
     std::string hostDomain;
     std::string source;
     int isValid;
-    int createDate;
-    int lastDate;
+    UINT64 createDate;
+    UINT64 lastDate;
     int threatLevel;
 };
 
@@ -32,7 +32,7 @@ struct NETWORK_LOG
     UINT16 localPort;
     UINT16 length;
     int isThreat;       // 0: false, 1: true
-    int timestamp;
+    UINT64 timestamp;
 };
 
 // =============================================================================================
@@ -42,14 +42,14 @@ struct NETWORK_LOG
 struct PROCESS_LOG
 {
     int idx;
-    int networkIdx;     // tb_network_log PK
+    DWORD networkIdx;     // tb_network_log PK
     DWORD pid;
     DWORD ppid;
     std::string procName;
     std::string procPath;
     std::string procUser;
-    UINT32 procCreate;     // timestamp
-    UINT32 timestamp;
+    UINT64 procCreate;     // timestamp
+    UINT64 timestamp;
 };
 
 // =============================================================================================
@@ -64,7 +64,7 @@ struct USER_RULE
     std::string ruleValue;
     std::string ruleReason;
     int isValid;        // 0: false, 1: true
-    int timestamp;
+    UINT32 timestamp;
 };
 
 // =============================================================================================

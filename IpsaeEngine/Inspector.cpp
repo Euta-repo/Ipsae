@@ -80,7 +80,7 @@ static unsigned int StartInspector(HANDLE hReadyEvent, ENGINE_STATE* state)
 			IpToStr(ip, ipStr, sizeof(ipStr));
 
 			// IP 저장 - DB_INSERT_DATA 구조체에 IP 저장
-			dbData.network.remoteIp = ip;
+			dbData.network.remoteIp = ntohl(ip);
 			dbData.network.protocol = getProtocol();
 
 			// 가져온 데이터와 DB에서 가져온 위협 호스트 목록과 비교
@@ -256,7 +256,7 @@ void getProcessTree(DB_INSERT_DATA* dbData, const UINT32 targetPID) {
 
 	// 예외: 프로세스 핸들이 NULL인 경우 (프로세스 접근 실패)
 	if (hProcess == NULL) {
-		// spdlog::error("[Inspector] OpenProcess 실패: PID {}, Error : {}", targetPID, (unsigned int)GetLastError());
+		spdlog::error("[Inspector] OpenProcess 실패: PID {}, Error : {}", targetPID, (unsigned int)GetLastError());
 		return;
 	}
 
