@@ -3,6 +3,7 @@
 #include "Models.h"
 
 void GetThreatHostsFromDb(std::unordered_set<UINT32>* hostList);
+void GetBlacklistIpsFromDb(std::unordered_set<UINT32>* hostList);
 
 
 /// <summary>
