@@ -9,6 +9,7 @@
 static ThreadSafeQueue<DB_INSERT_BATCH> s_dbInsertQueue;
 
 static std::unordered_set<UINT32> _threat_hosts;
+static std::unordered_set<UINT32> _blacklist_ips;
 
 static const char* DB_LIST[] = {
     "tb_threat_host",
@@ -24,6 +25,7 @@ static const char* DB_LIST[] = {
 
 static int CheckDbTableList(sqlite3* db);
 static int GetThreatHostList(sqlite3* db, std::unordered_set<UINT32>& hosts);
+static int GetBlacklistIps(sqlite3* db, std::unordered_set<UINT32>& hosts);
 static int BatchInsertLog(sqlite3* db, DB_INSERT_BATCH& data);
 static unsigned int StartDbInsert(HANDLE hReadyEvent, ENGINE_STATE* state);
 
@@ -34,6 +36,11 @@ static unsigned int StartDbInsert(HANDLE hReadyEvent, ENGINE_STATE* state);
 void GetThreatHostsFromDb(std::unordered_set<UINT32>* hostList)
 {
    *hostList = std::move(_threat_hosts);
+}
+
+void GetBlacklistIpsFromDb(std::unordered_set<UINT32>* hostList)
+{
+   *hostList = std::move(_blacklist_ips);
 }
 
 void EnqueueDbInsert(const DB_INSERT_BATCH& data)
@@ -143,6 +150,40 @@ static int GetThreatHostList(sqlite3* db, std::unordered_set<UINT32>& hosts)
 
     // 결과 반환 - 완료 시 조회된 호스트 목록을 참조 매개변수에 저장
     hosts = std::move(threat_hosts);
+    return 0;
+}
+
+static int GetBlacklistIps(sqlite3* db, std::unordered_set<UINT32>& hosts)
+{
+    sqlite3_stmt* stmt = NULL;
+    std::unordered_set<UINT32> blacklist;
+
+    if (db == NULL)
+    {
+        spdlog::error("[DbInsert] DB 연결 확인 실패: DB is NULL");
+        return 1;
+    }
+
+    // rule_type=0: blacklist, rule_target=0: ip, is_valid=1: 활성
+    const char* queryString = "SELECT CAST(rule_value AS INTEGER) FROM tb_user_rule WHERE rule_type = 0 AND rule_target = 0 AND is_valid = 1;";
+    int rc = sqlite3_prepare_v2(db, queryString, -1, &stmt, NULL);
+    if (rc != SQLITE_OK)
+    {
+        spdlog::error("[DbInsert] SELECT blacklist: {}", sqlite3_errmsg(db));
+        sqlite3_finalize(stmt);
+        return 1;
+    }
+
+    while (sqlite3_step(stmt) == SQLITE_ROW)
+    {
+        UINT32 ip = (UINT32)sqlite3_column_int(stmt, 0);
+        blacklist.insert(ip);
+    }
+
+    sqlite3_finalize(stmt);
+
+    spdlog::info("[DbInsert] 블랙리스트 IP {} 건 로드", blacklist.size());
+    hosts = std::move(blacklist);
     return 0;
 }
 
@@ -296,6 +337,14 @@ static unsigned int StartDbInsert(HANDLE hReadyEvent, ENGINE_STATE* state)
         return 1;
     }
 	_threat_hosts = std::move(threat_hosts);
+
+    // 블랙리스트 IP 목록 수집
+    std::unordered_set<UINT32> blacklist;
+    if (GetBlacklistIps(db, blacklist) > 0)
+    {
+        spdlog::warn("[DbInsert] 블랙리스트 IP 조회 실패 (계속 진행)");
+    }
+    _blacklist_ips = std::move(blacklist);
 
     // Main 에게 Thread 가 준비되었음을 알림
     state->dbInsertRunning = true;
