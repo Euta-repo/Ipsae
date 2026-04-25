@@ -28,6 +28,7 @@ unsigned int StartInspector(HANDLE hReadyEvent, ENGINE_STATE* state);
 void getTcpPID(const MIB_TCPTABLE_OWNER_PID* curTable, const UINT32 ip, UINT32* curPID);
 void getUdpPID(const MIB_UDPTABLE_OWNER_PID* curTable, const UINT32 ip, UINT32* curPID);
 void getProcessTree(DB_INSERT_DATA* dbData, const UINT32 targetPID);
+UINT32 getLocalIp();
 
 #pragma endregion
 
@@ -81,7 +82,21 @@ static unsigned int StartInspector(HANDLE hReadyEvent, ENGINE_STATE* state)
 
 			// IP 저장 - DB_INSERT_DATA 구조체에 IP 저장
 			dbData.network.remoteIp = ntohl(ip);
+			dbData.network.isThreat = 0; // 초기값 설정 
+			dbData.network.length = getPacketLength();
 			dbData.network.protocol = getProtocol();
+			dbData.network.timestamp = getPacketTimestamp();
+
+			if (getDirection()) {
+				dbData.network.direction = 1; // OUT
+				dbData.network.localPort = getDstPort();
+				dbData.network.remotePort = getSrcPort();
+			}
+			else {
+				dbData.network.direction = 0; // IN
+				dbData.network.localPort = getSrcPort();
+				dbData.network.remotePort = getDstPort();
+			}
 
 			// 가져온 데이터와 DB에서 가져온 위협 호스트 목록과 비교
 			// if문 실행 - 위협 호스트인 경우
@@ -89,6 +104,8 @@ static unsigned int StartInspector(HANDLE hReadyEvent, ENGINE_STATE* state)
 
 				// 현재 프로세스 정보 탐색
 				// 프로토콜에 따라 탐색 방법 분기
+
+				dbData.network.isThreat = 1; 
 
 				if (dbData.network.protocol == 6) {
 					
@@ -297,6 +314,17 @@ void getProcessTree(DB_INSERT_DATA* dbData, const UINT32 targetPID) {
 	}
 
 	CloseHandle(hProcess); // 프로세스 핸들 닫기
+}
+
+UINT32 getLocalIP() {
+	char hostname[256];
+	gethostname(hostname, sizeof(hostname));
+	struct hostent* host = gethostbyname(hostname);
+	if (host == NULL) {
+		spdlog::error("[Inspector] gethostbyname failed: {}", WSAGetLastError());
+		return 0;
+	}
+	return *(UINT32*)host->h_addr_list[0];
 }
 
 #pragma endregion

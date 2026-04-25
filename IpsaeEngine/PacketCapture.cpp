@@ -13,8 +13,12 @@ static HANDLE s_handle = INVALID_HANDLE_VALUE;
 static std::unordered_set<std::string> s_debugExcludeIps;
 #define debug_exclude(ip) s_debugExcludeIps.insert(ip)
 
-int flag = 0;
+int protocolType = 0;
+int direction = -1; // 0: IN, 1: OUT
 UINT32 srcPort = 0;
+UINT32 dstPort = 0;
+UINT packetLength = 0;
+UINT32 packetTimestamp = 0;
 
 #pragma endregion
 
@@ -66,6 +70,8 @@ static int BatchPacketCapture(HANDLE handle, unsigned char* packet, UINT* recvLe
         if (!WinDivertRecv(handle, packet, PACKET_BUFSIZE, recvLen, addr))
             return 1;
 
+		packetTimestamp = (UINT32)(addr->Timestamp / 1000); // 타임스탬프를 초 단위로 변환 (밀리초에서)
+
 		// IP 헤더 파싱
         PWINDIVERT_IPHDR ipHdr = NULL;
         PWINDIVERT_TCPHDR tcpHdr = NULL;
@@ -76,14 +82,25 @@ static int BatchPacketCapture(HANDLE handle, unsigned char* packet, UINT* recvLe
             &ipHdr, NULL, NULL, NULL, NULL,
             &tcpHdr, &udpHdr, NULL, NULL, NULL, NULL);
 
+		packetLength = *recvLen;
+
         if (ipHdr == NULL) return 2;
 
-        if (tcpHdr != NULL) flag = 6;
-        else if (udpHdr != NULL) {
-            flag = 17;
-            srcPort = udpHdr->SrcPort;
+        if (tcpHdr != NULL) {
+            protocolType = 6;
+			srcPort = tcpHdr->SrcPort;
+			dstPort = tcpHdr->DstPort;
         }
-        else flag = 0;
+        else if (udpHdr != NULL) {
+            protocolType = 17;
+            srcPort = udpHdr->SrcPort;
+			dstPort = udpHdr->DstPort;
+        }
+        else protocolType = 0;
+
+        direction = addr->Outbound ? 1 : 0;
+
+        if (direction == -1) return 4;
 
 		// 원격 호스트 IP 주소 추출 및 배치에 추가
         UINT32 remoteHost = addr->Outbound ? ipHdr->DstAddr : ipHdr->SrcAddr;
@@ -213,11 +230,27 @@ static unsigned int StartPacketCapture(HANDLE hReadyEvent, ENGINE_STATE* state)
 }
 
 int getProtocol() {
-    return flag;
+    return protocolType;
 }
 
 UINT32 getSrcPort() {
     return srcPort;
+}
+
+UINT32 getDstPort() {
+    return dstPort;
+}
+
+int getDirection() {
+    return direction;
+}
+
+UINT getPacketLength() {
+    return packetLength;
+}
+
+UINT32 getPacketTimestamp() {
+    return packetTimestamp;
 }
 
 #pragma endregion

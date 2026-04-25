@@ -22,3 +22,11 @@ unsigned int __stdcall StartPacketCaptureThread(void* param);
 int getProtocol();
 
 UINT32 getSrcPort();
+
+UINT32 getDstPort();
+
+int getDirection();
+
+UINT getPacketLength();
+
+UINT32 getPacketTimestamp();
