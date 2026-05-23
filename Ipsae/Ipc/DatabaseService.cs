@@ -14,18 +14,22 @@ public class DatabaseService
 
     public static string DbPath => IpsaePaths.DbPath;
 
+    private static readonly string _writeConnStr = $"Data Source={IpsaePaths.DbPath}";
+    private static readonly string _readConnStr = $"Data Source={IpsaePaths.DbPath};Mode=ReadOnly";
+
     private DatabaseService() { }
 
     public bool Initialize()
     {
         try
         {
-            using var connection = new SqliteConnection($"Data Source={DbPath}");
+            using var connection = new SqliteConnection(_writeConnStr);
             connection.Open();
 
+            EnableWalMode(connection);
             CreateTables(connection);
 
-            Log.Information("Database initialized: {Path}", DbPath);
+            Log.Information("Database initialized (WAL): {Path}", DbPath);
             return true;
         }
         catch (Exception ex)
@@ -37,9 +41,23 @@ public class DatabaseService
 
     public SqliteConnection CreateConnection()
     {
-        var connection = new SqliteConnection($"Data Source={DbPath}");
+        var connection = new SqliteConnection(_writeConnStr);
         connection.Open();
         return connection;
+    }
+
+    public SqliteConnection CreateReadConnection()
+    {
+        var connection = new SqliteConnection(_readConnStr);
+        connection.Open();
+        return connection;
+    }
+
+    private static void EnableWalMode(SqliteConnection connection)
+    {
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = "PRAGMA journal_mode=WAL;";
+        cmd.ExecuteNonQuery();
     }
 
     // rule_type: 0=blacklist, 1=whitelist
@@ -60,7 +78,7 @@ public class DatabaseService
         var list = new List<IpEntry>();
         try
         {
-            using var connection = CreateConnection();
+            using var connection = CreateReadConnection();
             using var command = connection.CreateCommand();
             command.CommandText = """
                 SELECT rule_value,
@@ -132,6 +150,54 @@ public class DatabaseService
             Log.Error(ex, "Failed to remove IP rule: {Ip} (type={RuleType})", ip, ruleType);
             return false;
         }
+    }
+
+    public List<DetectionEvent> GetProcessLogs()
+    {
+        var list = new List<DetectionEvent>();
+        try
+        {
+            using var connection = CreateReadConnection();
+            using var command = connection.CreateCommand();
+            command.CommandText = """
+                SELECT p.proc_name, p.proc_path, n.remote_ip, n.is_threat, p.timestamp
+                FROM tb_process_log p
+                LEFT JOIN tb_network_log n ON p.network_idx = n.idx
+                ORDER BY p.timestamp DESC
+                """;
+
+            using var reader = command.ExecuteReader();
+            while (reader.Read())
+            {
+                var procName = reader.GetString(0);
+                var procPath = reader.GetString(1);
+                var remoteIpInt = reader.IsDBNull(2) ? 0L : reader.GetInt64(2);
+                var isThreat = reader.IsDBNull(3) ? 0 : reader.GetInt32(3);
+                var timestamp = reader.GetInt64(4);
+
+                list.Add(new DetectionEvent
+                {
+                    ProcessName = procName,
+                    FilePath = procPath,
+                    IpAddress = IntToIpString((uint)remoteIpInt),
+                    DetectedDate = DateTimeOffset.FromUnixTimeSeconds(timestamp)
+                                       .ToLocalTime()
+                                       .ToString("yyyy-MM-dd HH:mm:ss"),
+                    Severity = isThreat == 1 ? "위험" : "정상"
+                });
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "Failed to get process logs");
+        }
+        return list;
+    }
+
+    private static string IntToIpString(uint ip)
+    {
+        if (ip == 0) return "-";
+        return $"{(ip >> 24) & 0xFF}.{(ip >> 16) & 0xFF}.{(ip >> 8) & 0xFF}.{ip & 0xFF}";
     }
 
     private static void CreateTables(SqliteConnection connection)
@@ -335,7 +401,7 @@ public class ThreatFeedImporter
         if (!IPAddress.TryParse(ipStr, out _)) return false;
         uint ipInt = IpToInt(ipStr);
 
-        using var connection = DatabaseService.Instance.CreateConnection();
+        using var connection = DatabaseService.Instance.CreateReadConnection();
         using var cmd = connection.CreateCommand();
         cmd.CommandText = """
             SELECT COUNT(*) FROM tb_threat_host
